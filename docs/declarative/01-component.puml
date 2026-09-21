@@ -1,0 +1,127 @@
+@startuml 01-component-diagram
+!theme plain
+title BoardSync — Компонентна діаграма (модульний моноліт)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 12
+skinparam componentStyle rectangle
+skinparam defaultTextAlignment center
+skinparam ArrowColor #555555
+skinparam ArrowFontColor #333333
+skinparam ArrowFontSize 11
+skinparam component {
+  BorderThickness 1.4
+  FontSize 13
+}
+skinparam package {
+  BorderColor #34495E
+  FontColor #2C3E50
+  FontStyle bold
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #F1C40F
+}
+
+skinparam component<<auth>> {
+  BackgroundColor #FDE8E8
+  BorderColor #E74C3C
+}
+skinparam component<<boards>> {
+  BackgroundColor #E8F4FD
+  BorderColor #3498DB
+}
+skinparam component<<jira>> {
+  BackgroundColor #FFF4E0
+  BorderColor #F39C12
+}
+skinparam component<<realtime>> {
+  BackgroundColor #E8F8F0
+  BorderColor #27AE60
+}
+skinparam component<<infra>> {
+  BackgroundColor #F2F2F2
+  BorderColor #7F8C8D
+}
+
+actor "Учасник\nкоманди" as User
+actor "Адміністратор" as Admin
+
+package "Клієнт" {
+  component "Frontend\n(React SPA)" as FE <<infra>>
+}
+
+package "Backend — NestJS модульний моноліт\n(один процес, один Docker-контейнер)" as Backend {
+
+  component "Auth Module\n[Денис]" as Auth <<auth>>
+  interface "REST /auth/*" as IAuth
+
+  component "Boards & Cards Module\n[Павло]" as Boards <<boards>>
+  interface "REST /boards/*\n/cards/*" as IBoards
+
+  component "Jira-Sync Module\n[Едвард]" as Jira <<jira>>
+  interface "REST /jira/*\n(webhook, connect)" as IJira
+
+  component "Realtime Module\n[Кирило]" as RT <<realtime>>
+  interface "WS /realtime" as IRT
+
+  component "Internal Event Bus\n(@nestjs/event-emitter)" as Bus <<infra>>
+
+  IAuth - Auth
+  IBoards - Boards
+  IJira - Jira
+  IRT - RT
+}
+
+database "PostgreSQL\n(єдина БД,\nтаблиці по модулях)" as DB <<infra>>
+cloud "Jira Cloud\n(REST API v3,\nOAuth 2.0 3LO)" as JiraCloud <<infra>>
+
+' --- Клієнт -> Backend ---
+User --> FE : взаємодіє
+Admin --> FE : адмініструє
+FE --> IAuth : HTTPS/REST\n(JWT)
+FE --> IBoards : HTTPS/REST\n(JWT)
+FE --> IJira : HTTPS/REST\n(OAuth-конект)
+FE ..> IRT : WSS\n(підписка на дошку)
+
+' --- Прямі виклики сервісів (DI), в межах монолiта ---
+Boards --> Auth : перевірка\nдоступу (DI)
+Jira --> Boards : читання/запис\nкартки (DI)
+Auth --> Jira : зберегти\nOAuth-токени (DI)
+
+' --- Взаємодія через подію (щоб уникнути прямої залежності\nBoards/Jira -> Realtime і петлі синхронізації) ---
+Boards ..> Bus : publish\n"card.moved"
+Jira ..> Bus : publish\n"card.moved"\n(origin=jira)
+Bus ..> RT : on "card.moved"
+
+RT --> IRT
+
+' --- Зовнішні системи ---
+Auth --> DB : TypeORM
+Boards --> DB : TypeORM
+Jira --> DB : TypeORM
+Jira <--> JiraCloud : REST API v3 /\nOAuth 2.0 (3LO) /\nWebhook
+
+note bottom of Bus
+  Подієва шина використовується **лише** для fan-out
+  сценарію "картку змінено -> сповістити Realtime",
+  щоб Boards і Jira-Sync не залежали напряму від
+  Realtime і не створювали циклічних залежностей.
+  Усе інше — прямі виклики сервісів через DI (простіше,
+  легше дебажити, достатньо для команди з 4 розробників).
+end note
+
+note right of JiraCloud
+  NFR: TLS 1.2+, OAuth-токени
+  зберігаються зашифровано
+end note
+
+legend right
+  |= Позначення |= Значення |
+  | суцільна стрілка | прямий виклик сервісу (DI) |
+  | пунктирна стрілка | подія через Event Bus |
+  | колір компонента | модуль = зона відповідальності учасника команди |
+endlegend
+
+@enduml
