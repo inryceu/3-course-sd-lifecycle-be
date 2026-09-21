@@ -1,0 +1,134 @@
+@startuml 02-class-diagram
+!theme plain
+title BoardSync — Діаграма класів: доменна модель Boards & Cards
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam classFontSize 12
+skinparam classAttributeFontSize 11
+skinparam classFontStyle bold
+skinparam classBorderThickness 1.3
+skinparam ArrowColor #555555
+skinparam class {
+  BackgroundColor #E8F4FD
+  BorderColor #3498DB
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #F1C40F
+}
+
+package "boards-cards" {
+
+  enum BoardRole {
+    ADMIN
+    MEMBER
+    VIEWER
+  }
+
+  enum ColumnType {
+    TODO
+    IN_PROGRESS
+    REVIEW
+    DONE
+  }
+
+  class User <<entity>> {
+    + id: UUID
+    + email: string
+    - passwordHash: string
+    + displayName: string
+    + createdAt: Date
+    --
+    + comparePassword(raw: string): boolean
+  }
+
+  class BoardMembership <<entity>> {
+    + id: UUID
+    + role: BoardRole
+    + invitedAt: Date
+    --
+    + canEdit(): boolean
+  }
+
+  class Board <<entity>> {
+    + id: UUID
+    + title: string
+    + jiraProjectKey: string?
+    + createdAt: Date
+    --
+    + addColumn(title: string): Column
+    + inviteMember(user: User, role: BoardRole): void
+  }
+
+  class Column <<entity>> {
+    + id: UUID
+    + title: string
+    + type: ColumnType
+    + position: int
+    --
+    + addCard(card: Card): void
+    + reorder(newPosition: int): void
+  }
+
+  class Card <<entity>> {
+    + id: UUID
+    + title: string
+    + description: string
+    + deadline: Date?
+    + jiraIssueKey: string?
+    + createdAt: Date
+    --
+    + moveTo(column: Column): void
+    + assign(user: User): void
+    + addLabel(label: Label): void
+  }
+
+  class Label <<entity>> {
+    + id: UUID
+    + name: string
+    + color: string
+  }
+
+  class Comment <<entity>> {
+    + id: UUID
+    + text: string
+    + createdAt: Date
+    + syncedToJira: boolean
+    --
+    + markSynced(): void
+  }
+
+  ' --- Асоціації ---
+  User "1" -- "0..*" BoardMembership : має >
+  Board "1" -- "0..*" BoardMembership : учасники >
+  BoardMembership "0..*" -- "1" BoardRole
+
+  Board "1" *-- "1..*" Column : складається з\n(композиція)
+  Column "1" *-- "0..*" Card : містить\n(композиція)
+  Column "1" -- "1" ColumnType
+
+  Card "0..*" -- "0..*" Label : позначена\n(асоціація, м:м)
+  Card "1" *-- "0..*" Comment : коментарі\n(композиція)
+  Comment "0..*" --> "1" User : автор >
+  Card "0..*" --> "0..1" User : виконавець >
+
+  note right of Card
+    **jiraIssueKey** — зовнішній ключ
+    (не FK у БД) на issue в Jira,
+    заповнюється Jira-Sync модулем
+    при імпорті / створенні картки.
+  end note
+
+  note bottom of BoardMembership
+    Композиція Board -> Column -> Card:
+    колонка/картка не існує без дошки —
+    видалення дошки каскадно видаляє все.
+    Card -> Label — окрема association-таблиця
+    (many-to-many), бо мітка існує незалежно
+    і використовується багатьма картками.
+  end note
+}
+
+@enduml
