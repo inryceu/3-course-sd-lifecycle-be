@@ -1,0 +1,75 @@
+@startuml 04-state-diagram
+!theme plain
+title BoardSync — State: життєвий цикл картки (синхронізовано зі статусом Jira-issue)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #555555
+skinparam state {
+  BackgroundColor #E8F4FD
+  BorderColor #3498DB
+  FontStyle bold
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #F1C40F
+}
+
+[*] --> ToDo : створення картки (FR-04)\nабо імпорт issue (FR-05)
+
+state ToDo {
+  ToDo : entry / зберегти card.createdAt
+  ToDo : columnType = TODO
+}
+
+state InProgress {
+  InProgress : entry / надіслати оновлення в Jira (FR-06)
+  InProgress : columnType = IN_PROGRESS
+}
+
+state Review {
+  Review : columnType = REVIEW
+}
+
+state Done {
+  Done : entry / зафіксувати card.completedAt
+  Done : columnType = DONE
+}
+
+state ConflictDetected <<choice>>
+
+ToDo --> InProgress : користувач перемістив картку /\nissue-transition з Jira
+InProgress --> Review : картка готова до рев'ю
+Review --> InProgress : повернено на доопрацювання
+Review --> Done : затверджено
+InProgress --> Done : пряме завершення\n(швидкий шлях)
+Done --> InProgress : повторне відкриття\n(reopened issue)
+
+ToDo -[#E74C3C,dashed]-> ConflictDetected : одночасна зміна\nв BoardSync і Jira (FR-13)
+InProgress -[#E74C3C,dashed]-> ConflictDetected : одночасна зміна\nв BoardSync і Jira (FR-13)
+Review -[#E74C3C,dashed]-> ConflictDetected
+ConflictDetected --> [H] : Jira "джерело правди"\n(за замовчуванням)
+ConflictDetected --> InProgress : адміністратор\nобрав BoardSync-версію
+
+state "Історія (Deep History)" as H <<history>>
+
+Done --> [*] : архівація картки
+
+note right of ConflictDetected
+  **FR-13**: якщо статус змінено одночасно
+  в обох системах (вікно < 5 с), система
+  логує конфлікт і чекає на:
+  1) авторозв'язання (Jira перемагає) — типово,
+  2) ручне рішення адміністратора.
+end note
+
+note left of ToDo
+  Кожен перехід стану ініціюється
+  **або** користувачем у BoardSync UI
+  (Sequence A), **або** вебхуком з Jira
+  (Sequence B) — див. sequence-діаграму
+  синхронізації.
+end note
+
+@enduml
