@@ -1,0 +1,99 @@
+@startuml 03-sequence-jira-sync
+!theme plain
+title BoardSync — Sequence: двостороння синхронізація з Jira (FR-06, FR-07, FR-13)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam ArrowColor #555555
+skinparam sequenceParticipant {
+  BorderThickness 1.2
+}
+skinparam sequence {
+  LifeLineBorderColor #7F8C8D
+  LifeLineBackgroundColor #ECF0F1
+  BoxBorderColor #BDC3C7
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #F1C40F
+}
+
+actor "Користувач" as U
+boundary "Frontend\n(React)" as FE
+
+box "Backend" #F8F9FA
+  control "BoardsCardsService\n[Павло]" as Boards <<boards>>
+  control "EventBus" as Bus <<infra>>
+  control "JiraSyncService\n[Едвард]" as Jira <<jira>>
+  control "RealtimeGateway\n[Кирило]" as RT <<realtime>>
+end box
+
+database "PostgreSQL" as DB
+participant "Jira Cloud" as JC
+
+autonumber "<b>[0]"
+
+== Сценарій A: користувач перемістив картку (BoardSync -> Jira) ==
+
+U -> FE : drag-and-drop картки\nу колонку "In Progress"
+activate FE
+FE -> Boards : PATCH /cards/{id}\n{ columnId }
+activate Boards
+Boards -> DB : UPDATE card SET column_id = ...
+Boards -> Bus : publish("card.moved",\n{ cardId, origin: "user" })
+deactivate Boards
+Boards --> FE : 200 OK
+deactivate Boards
+FE --> U : миттєве оновлення UI
+
+Bus -> Jira : on("card.moved")
+activate Jira
+alt origin == "user"
+  Jira -> JC : PUT /issue/{key}/transitions
+  activate JC
+  JC --> Jira : 204 No Content
+  deactivate JC
+  note right of Jira
+    **Обмеження FR-06:** оновлення статусу
+    в Jira має завершитись ≤ 5 с з моменту
+    переміщення картки.
+  end note
+else origin == "jira" (петля синхронізації)
+  Jira -> Jira : ігнорувати подію
+  note right: запобігання нескінченному циклу\nsync <-> sync
+end
+
+Bus -> RT : on("card.moved")
+activate RT
+RT -> RT : broadcast у WS-кімнату\nboard:{boardId}
+deactivate RT
+deactivate Jira
+
+== Сценарій B: статус issue змінено напряму в Jira (Jira -> BoardSync) ==
+
+JC -> Jira : Webhook POST /jira/webhook\n(issue_updated)
+activate Jira
+Jira -> Jira : перевірити підпис\nвебхука
+Jira -> Boards : updateCardColumn(cardId, columnId)\n[прямий виклик через DI]
+activate Boards
+Boards -> DB : UPDATE card SET column_id = ...
+alt конфлікт: картку вже змінено користувачем < 5с тому
+  Boards --> Jira : ConflictError
+  Jira -> DB : INSERT sync_conflict_log
+  Jira -> Boards : сповістити адміністратора\n(FR-13)
+  note over Boards, Jira
+    **FR-13**: конфлікти синхронізації логуються,
+    адміністратор отримує сповіщення для ручного
+    вирішення (Jira залишається "джерелом правди"
+    за замовчуванням).
+  end note
+else без конфлікту
+  Boards -> Bus : publish("card.moved",\n{ cardId, origin: "jira" })
+  Bus -> RT : on("card.moved")
+  RT -> RT : broadcast у WS-кімнату
+end
+deactivate Boards
+deactivate Jira
+
+@enduml
