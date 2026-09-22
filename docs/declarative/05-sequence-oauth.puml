@@ -1,0 +1,77 @@
+@startuml 05-sequence-oauth
+!theme plain
+title BoardSync — Sequence: підключення Jira через OAuth 2.0 (3LO) (FR-02)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam ArrowColor #555555
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #F1C40F
+}
+
+actor "Адміністратор" as Admin
+boundary "Frontend\n(React)" as FE
+
+box "Backend" #F8F9FA
+  control "AuthModule\n[Денис]" as Auth <<auth>>
+  control "JiraSyncModule\n[Едвард]" as Jira <<jira>>
+end box
+
+database "PostgreSQL\n(токени — encrypted)" as DB
+participant "Jira Authorization\nServer (Atlassian)" as JAuth
+
+autonumber "<b>[0]"
+
+Admin -> FE : натискає\n"Підключити Jira"
+activate FE
+FE -> Auth : GET /auth/session\n(перевірка ролі ADMIN)
+activate Auth
+Auth --> FE : 200 OK, role=ADMIN
+deactivate Auth
+
+FE -> Jira : GET /jira/oauth/start
+activate Jira
+Jira -> Jira : згенерувати\nstate (anti-CSRF) +\nPKCE code_verifier
+Jira -> DB : зберегти state, code_verifier\n(TTL 10 хв)
+Jira --> FE : 302 redirect URL\n(authorize.atlassian.com/...)
+deactivate Jira
+
+FE -> JAuth : redirect: GET /authorize\n?client_id&scope&state&code_challenge
+activate JAuth
+JAuth --> Admin : сторінка узгодження\nдоступу (consent screen)
+Admin -> JAuth : "Дозволити доступ"
+
+alt адміністратор підтвердив доступ
+  JAuth --> FE : redirect: GET /jira/oauth/callback\n?code=...&state=...
+  deactivate JAuth
+  FE -> Jira : GET /jira/oauth/callback\n?code&state
+  activate Jira
+  Jira -> DB : перевірити збережений state
+  alt state валідний
+    Jira -> JAuth : POST /oauth/token\n{ code, code_verifier, client_secret }
+    activate JAuth
+    JAuth --> Jira : { access_token, refresh_token,\nexpires_in }
+    deactivate JAuth
+    Jira -> Jira : зашифрувати токени\n(AES-256)
+    Jira -> DB : UPSERT jira_connection\n(encrypted tokens, workspace_id)
+    note right of DB
+      **NFR (Безпека)**: OAuth-токени
+      зберігаються зашифровано; передача —
+      лише HTTPS/TLS 1.2+.
+    end note
+    Jira --> FE : 200 { connected: true,\nprojectKey }
+    FE --> Admin : "Jira підключено ✓"
+  else state невалідний / протух\n(можлива CSRF-атака)
+    Jira --> FE : 400 Bad Request
+    FE --> Admin : помилка,\nповторити підключення
+  end
+  deactivate Jira
+else адміністратор відхилив доступ
+  JAuth --> FE : redirect: ?error=access_denied
+  FE --> Admin : "Доступ не надано"
+end
+deactivate FE
+
+@enduml
