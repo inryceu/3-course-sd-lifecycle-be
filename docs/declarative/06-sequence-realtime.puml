@@ -1,0 +1,90 @@
+@startuml 06-sequence-realtime
+!theme plain
+title BoardSync — Sequence: real-time розсилка оновлень (FR-11)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam ArrowColor #555555
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #F1C40F
+}
+
+actor "Користувач A" as UA
+actor "Користувач B" as UB
+actor "Користувач C" as UC
+
+boundary "Frontend A" as FEA
+boundary "Frontend B" as FEB
+boundary "Frontend C" as FEC
+
+box "Backend" #F8F9FA
+  control "BoardsCardsService\n[Павло]" as Boards <<boards>>
+  control "EventBus" as Bus <<infra>>
+  control "RealtimeGateway\n[Кирило]" as RT <<realtime>>
+end box
+
+database "PostgreSQL" as DB
+
+autonumber "<b>[0]"
+
+== Підписка (при відкритті дошки) ==
+
+FEB -> RT : WS connect + subscribe\nroom = "board:{boardId}"
+activate RT
+RT -> RT : socket.join("board:{boardId}")
+deactivate RT
+FEC -> RT : WS connect + subscribe\nroom = "board:{boardId}"
+activate RT
+RT -> RT : socket.join("board:{boardId}")
+deactivate RT
+
+note over FEB, FEC
+  Користувачі B і C вже відкрили ту саму
+  дошку — їхні WS-з'єднання приєднані
+  до кімнати "board:{boardId}".
+end note
+
+== Оновлення картки користувачем A ==
+
+UA -> FEA : додає коментар до картки
+FEA -> Boards : POST /cards/{id}/comments\n{ text }
+activate Boards
+Boards -> DB : INSERT comment
+Boards -> Bus : publish("card.commented",\n{ cardId, boardId, comment })
+Boards --> FEA : 201 Created
+deactivate Boards
+FEA --> UA : показати коментар\n(оптимістичне оновлення)
+
+Bus -> RT : on("card.commented")
+activate RT
+RT -> RT : socket.to("board:{boardId}")\n.emit("card.commented", payload)
+
+par розсилка усім підписникам кімнати, крім автора
+  RT -> FEB : WS push: card.commented
+  activate FEB
+  FEB -> FEB : оновити стан картки\n(без перезавантаження, FR-11)
+  FEB --> UB : коментар з'явився миттєво
+  deactivate FEB
+else
+  RT -> FEC : WS push: card.commented
+  activate FEC
+  FEC -> FEC : оновити стан картки
+  FEC --> UC : коментар з'явився миттєво
+  deactivate FEC
+end
+deactivate RT
+
+note right of RT
+  **FR-11 / NFR**: усі підписники кімнати
+  бачать зміну без перезавантаження сторінки;
+  автор (A) не отримує власне повідомлення
+  повторно — воно вже застосоване оптимістично.
+  Той самий канал "card.*" використовується і
+  для подій від Jira-Sync (див. діаграму
+  синхронізації) — Realtime не розрізняє
+  походження події.
+end note
+
+@enduml
