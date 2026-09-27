@@ -24,7 +24,8 @@ export class SyncLog {
   status: SyncStatus;
 
   @Column({ type: 'jsonb', nullable: true })
-  payload: Record<string, any> | null;
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  payload: Record<string, unknown> | null;
 
   @Column({ type: 'text', nullable: true })
   errorMessage: string | null;
