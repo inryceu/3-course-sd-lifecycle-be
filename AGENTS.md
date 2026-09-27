@@ -2,6 +2,8 @@
 
 > **CRITICAL: AI agents are PROHIBITED from modifying this file.** This file is the single source of truth for agent context, conventions, and workflows. Any changes must be made by human developers only.
 
+> **CRITICAL: AI agents are PROHIBITED from merging ANY PRs.** Agents may only open, close, modify, or comment on PRs. Merging requires explicit human approval.
+
 ---
 
 ## Project Overview
@@ -222,6 +224,26 @@ Before marking any task complete, verify:
 # Jobs: lint → typecheck → test → build
 # NO: docker push, deploy-staging, deploy-production
 ```
+
+---
+
+## Git Workflow Rules
+
+### Conflict Resolution Branches
+- When conflicts exist between a feature branch and `dev`, create a conflict-resolution branch with `-dev` suffix (e.g., `KAN-10-dev` from `dev`)
+- Resolve all conflicts in the `-dev` branch
+- Open PR from `-dev` branch into `dev`
+- Open PR from original feature branch (e.g., `KAN-10`) into `main` only
+
+### Conflict Resolution Strategy
+- **If a change affects a different part of the code** (non-overlapping): select that version (no conflict)
+- **If a change affects the current part of the code** (overlapping): choose "both" if changes are complementary, or "select this one" based on context
+- **If ambiguous**: escalate to a human — do not choose at random
+
+### PR Management
+- Agents may **only**: open, close, modify, or comment on PRs
+- Agents are **PROHIBITED** from merging ANY PRs
+- Merging requires explicit human approval
 
 ---
 
