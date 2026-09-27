@@ -28,16 +28,16 @@
 
 ## 5. Verification & Documentation
 
-- [ ] 5.1 Verify dev environment: `docker compose up --build` → API responds on :3000, hot reload works
-- [ ] 5.2 Verify prod environment: `docker compose -f docker-compose.prod.yml up --build` → API responds on :3000
-- [ ] 5.3 Verify CI pipeline passes on push to KAN-10 branch
-- [ ] 5.4 Update AGENTS.md with new commands and Docker usage
-- [ ] 5.5 Update README.md with getting started instructions
+- [x] 5.1 Verify dev environment: `docker compose up --build` → API responds on :3000, hot reload works
+- [x] 5.2 Verify prod environment: `docker compose -f docker-compose.prod.yml up --build` → API responds on :3000
+- [x] 5.3 Verify CI pipeline passes on push to KAN-10 branch
+- [x] 5.4 Update AGENTS.md with new commands and Docker usage
+- [x] 5.5 Update README.md with getting started instructions
 
 ## 6. Frontend Parallel Setup (in frontend repo)
 
-- [ ] 6.1 Scaffold React + Vite + TypeScript project with similar Docker/CI setup
-- [ ] 6.2 Create multi-stage Dockerfile, docker-compose.yml, docker-compose.prod.yml
-- [ ] 6.3 Add npm scripts: `dev`, `build`, `preview`, `test`, `lint`, `typecheck`
-- [ ] 6.4 Create GitHub Actions CI/CD for frontend
-- [ ] 6.5 Verify both dev and prod environments work independently
+- [x] 6.1 Scaffold React + Vite + TypeScript project with similar Docker/CI setup
+- [x] 6.2 Create multi-stage Dockerfile, docker-compose.yml, docker-compose.prod.yml
+- [x] 6.3 Add npm scripts: `dev`, `build`, `preview`, `test`, `lint`, `typecheck`
+- [x] 6.4 Create GitHub Actions CI/CD for frontend
+- [x] 6.5 Verify both dev and prod environments work independently
