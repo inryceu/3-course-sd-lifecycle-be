@@ -1,6 +1,8 @@
-# BoardSync — AGENTS.md
+# BoardSync — AGENTS.md (Backend)
 
-> Instructions for AI agents working on the BoardSync codebase. This file is the single source of truth for agent context, conventions, and workflows.
+> **CRITICAL: AI agents are PROHIBITED from modifying this file.** This file is the single source of truth for agent context, conventions, and workflows. Any changes must be made by human developers only.
+
+> **CRITICAL: AI agents are PROHIBITED from merging ANY PRs.** Agents may only open, close, modify, or comment on PRs. Merging requires explicit human approval.
 
 ---
 
@@ -8,9 +10,9 @@
 
 **BoardSync** — Kanban board with bidirectional Jira synchronization.
 - **Backend**: TypeScript, NestJS, TypeORM, PostgreSQL (modular monolith)
-- **Frontend**: TypeScript, React
+- **Frontend**: TypeScript, React 18+, Vite (separate repo: `3-course-sd-lifecycle-fe`)
 - **Architecture**: Modular monolith with 4 modules: `auth`, `boards-cards`, `jira-sync`, `realtime`
-- **Methodology**: Spec-driven development via OpenSpec (specs live in backend only)
+- **Methodology**: Spec-driven development via OpenSpec (specs live in **backend only**)
 
 ---
 
@@ -22,12 +24,13 @@
 | Backend Framework | NestJS 10+ |
 | ORM | TypeORM 0.3+ |
 | Database | PostgreSQL 15+ |
-| Frontend Framework | React 18+ |
+| Frontend Framework | React 18+ (separate repo) |
 | Real-time | WebSocket (NestJS Gateways / Socket.IO) |
 | Jira Integration | Jira REST API v3, OAuth 2.0 (3LO) |
 | Containerization | Docker, Docker Compose |
-| CI/CD | Separate pipelines for frontend & backend |
+| CI/CD | GitHub Actions (lint, typecheck, test, build only — **no deploy**) |
 | Spec Management | OpenSpec (`openspec/` directory) |
+| Package Manager | pnpm 9+ |
 
 ---
 
@@ -68,7 +71,7 @@
 - **TypeScript**: `strict: true`, no `any`, prefer `interface` over `type` for objects
 - **Naming**: PascalCase for classes/interfaces, camelCase for variables/functions, UPPER_SNAKE_CASE for constants
 - **Commits**: Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`)
-- **Branching**: Feature branches from `main` (e.g., `KAN-9`, `feat/user-auth`)
+- **Branching**: Feature branches from `main` (e.g., `KAN-10`, `feat/user-auth`)
 - **PRs**: Required reviews, CI must pass, squash merge
 
 ---
@@ -121,54 +124,41 @@ openspec list --specs --json       # List main capabilities/specs
 
 ---
 
-## Development Commands
+## Development Commands (Local Only)
 
 ### Backend (run from `3-course-sd-lifecycle-be/`)
 ```bash
 # Install
-npm install
+pnpm install
 
-# Development
-npm run start:dev       # Watch mode
-npm run start:debug     # Debug mode
+# Development (hot reload)
+pnpm start:dev
 
-# Build
-npm run build
+# Production build
+pnpm build
+
+# Run production build locally
+pnpm start:prod
 
 # Test
-npm run test            # Unit tests
-npm run test:e2e        # E2E tests
-npm run test:cov        # Coverage
+pnpm test            # Unit tests
+pnpm test:e2e        # E2E tests
+pnpm test:cov        # Coverage
 
 # Lint/Format
-npm run lint
-npm run format
+pnpm lint
+pnpm format
+
+# Type check
+pnpm typecheck
 
 # Database
-npm run migration:run
-npm run migration:generate -- <name>
+pnpm prisma:migrate
+pnpm prisma:studio
 
-# OpenSpec
-npx openspec --version
-```
-
-### Frontend (run from `3-course-sd-lifecycle-fe/`)
-```bash
-# Install
-npm install
-
-# Development
-npm run dev             # Vite dev server
-
-# Build
-npm run build
-
-# Test
-npm run test
-
-# Lint/Format
-npm run lint
-npm run format
+# Docker (local development)
+docker compose up --build        # Dev environment with hot reload
+docker compose -f docker-compose.prod.yml up --build  # Prod-like environment
 ```
 
 ---
@@ -200,7 +190,7 @@ npm run format
 ### Refactoring Within a Module
 - No OpenSpec change needed if no behavioral change
 - Ensure module boundaries remain intact
-- Run tests: `npm run test`
+- Run tests: `pnpm test`
 
 ---
 
@@ -208,9 +198,10 @@ npm run format
 
 Before marking any task complete, verify:
 - [ ] Code follows modular monolith rules (no cross-module Repository access)
-- [ ] TypeScript compiles without errors (`npm run build`)
-- [ ] Tests pass (`npm run test`)
-- [ ] Lint passes (`npm run lint`)
+- [ ] TypeScript compiles without errors (`pnpm build`)
+- [ ] Tests pass (`pnpm test`)
+- [ ] Lint passes (`pnpm lint`)
+- [ ] Type check passes (`pnpm typecheck`)
 - [ ] OpenSpec validation passes (`openspec validate "<change>" --json`)
 
 ---
@@ -221,6 +212,38 @@ Before marking any task complete, verify:
 - Diagrams in `docs/declarative/` (PlantUML) and `docs/image/` (rendered PNG)
 - Current diagrams: component, class (boards-cards), sequence (jira-sync, oauth, realtime), state
 - Frontend does NOT have OpenSpec — consumes backend API contracts
+
+---
+
+## CI/CD Pipeline (GitHub Actions) — Cost-Free Configuration
+
+**IMPORTANT**: The CI pipeline runs **only lint, typecheck, test, and build**. No Docker images are pushed to registries. No deployment jobs run. All development happens locally.
+
+```yaml
+# .github/workflows/ci.yml runs on push/PR to main and dev
+# Jobs: lint → typecheck → test → build
+# NO: docker push, deploy-staging, deploy-production
+```
+
+---
+
+## Git Workflow Rules
+
+### Conflict Resolution Branches
+- When conflicts exist between a feature branch and `dev`, create a conflict-resolution branch with `-dev` suffix (e.g., `KAN-10-dev` from `dev`)
+- Resolve all conflicts in the `-dev` branch
+- Open PR from `-dev` branch into `dev`
+- Open PR from original feature branch (e.g., `KAN-10`) into `main` only
+
+### Conflict Resolution Strategy
+- **If a change affects a different part of the code** (non-overlapping): select that version (no conflict)
+- **If a change affects the current part of the code** (overlapping): choose "both" if changes are complementary, or "select this one" based on context
+- **If ambiguous**: escalate to a human — do not choose at random
+
+### PR Management
+- Agents may **only**: open, close, modify, or comment on PRs
+- Agents are **PROHIBITED** from merging ANY PRs
+- Merging requires explicit human approval
 
 ---
 
