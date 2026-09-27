@@ -30,6 +30,7 @@ export class JiraIssueMapping {
 
   @ManyToOne(() => Card, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'card_id' })
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
   card: Card | null;
 
   @ManyToOne(() => User, { onDelete: 'SET NULL' })

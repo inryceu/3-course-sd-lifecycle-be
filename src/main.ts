@@ -65,4 +65,4 @@ async function bootstrap() {
   console.log(`📚 Swagger docs available at http://localhost:${port}/${apiPrefix}/docs`);
 }
 
-bootstrap();
+void bootstrap();

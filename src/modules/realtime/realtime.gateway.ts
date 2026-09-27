@@ -20,7 +20,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   constructor(private jwtService: JwtService) {}
 
-  async handleConnection(client: Socket) {
+  handleConnection(client: Socket) {
     try {
       const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.split(' ')[1];
       if (!token) {
@@ -30,7 +30,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       const payload = this.jwtService.verify(token);
       this.connectedClients.set(client.id, { userId: payload.sub, boards: new Set() });
-      this.logger.log(`Client connected: ${client.id} (user: ${payload.sub})`);
+      console.log(`Client connected: ${client.id} (user: ${payload.sub})`);
     } catch (err) {
       client.disconnect();
     }
@@ -38,7 +38,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   handleDisconnect(client: Socket) {
     this.connectedClients.delete(client.id);
-    this.logger.log(`Client disconnected: ${client.id}`);
+    console.log(`Client disconnected: ${client.id}`);
   }
 
   @SubscribeMessage('joinBoard')
@@ -47,7 +47,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (clientData) {
       clientData.boards.add(data.boardId);
       client.join(`board:${data.boardId}`);
-      this.logger.log(`Client ${client.id} joined board ${data.boardId}`);
+      console.log(`Client ${client.id} joined board ${data.boardId}`);
     }
   }
 
@@ -57,22 +57,20 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (clientData) {
       clientData.boards.delete(data.boardId);
       client.leave(`board:${data.boardId}`);
-      this.logger.log(`Client ${client.id} left board ${data.boardId}`);
+      console.log(`Client ${client.id} left board ${data.boardId}`);
     }
   }
 
   // Broadcast methods for other services to use
-  broadcastToBoard(boardId: string, event: string, data: any) {
+  broadcastToBoard(boardId: string, event: string, data: unknown) {
     this.server.to(`board:${boardId}`).emit(event, data);
   }
 
-  broadcastToUser(userId: string, event: string, data: any) {
+  broadcastToUser(userId: string, event: string, data: unknown) {
     for (const [clientId, clientData] of this.connectedClients.entries()) {
       if (clientData.userId === userId) {
         this.server.to(clientId).emit(event, data);
       }
     }
   }
-
-  private readonly logger = console;
 }
