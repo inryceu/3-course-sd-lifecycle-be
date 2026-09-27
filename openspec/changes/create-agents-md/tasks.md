@@ -8,5 +8,5 @@
 ## 2. Validate and Commit
 
 - [x] 2.1 Verify AGENTS.md renders correctly and contains accurate information
-- [ ] 2.2 Commit AGENTS.md to KAN-9 branch
+- [x] 2.2 Commit AGENTS.md to KAN-9 branch
 - [ ] 2.3 Open PR from KAN-9 to dev and main
