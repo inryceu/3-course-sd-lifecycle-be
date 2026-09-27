@@ -1,0 +1,100 @@
+# =============================================================================
+# BoardSync Backend - Development Environment
+# =============================================================================
+# Hot reload enabled via bind mounts
+# Separate network and volumes for complete isolation from prod
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database (Development)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: boardsync-postgres-dev
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: boardsync_dev
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - boardsync_postgres_dev_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - boardsync_dev_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d boardsync_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Backend API (Development)
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: boardsync-backend-dev
+    environment:
+      - NODE_ENV=development
+    env_file:
+      - .env.dev
+    ports:
+      - "3000:3000"
+      - "3001:3001"  # WebSocket port
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    networks:
+      - boardsync_dev_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    command: pnpm start:dev
+
+  # ---------------------------------------------------------------------------
+  # pgAdmin (Optional - Database Management UI)
+  # ---------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:8-alpine
+    container_name: boardsync-pgadmin-dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@boardsync.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - boardsync_pgadmin_dev_data:/var/lib/pgadmin
+    networks:
+      - boardsync_dev_network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+# -----------------------------------------------------------------------------
+# Networks - Isolated from production
+# -----------------------------------------------------------------------------
+networks:
+  boardsync_dev_network:
+    name: boardsync-dev-network
+    driver: bridge
+
+# -----------------------------------------------------------------------------
+# Volumes - Separate from production volumes
+# -----------------------------------------------------------------------------
+volumes:
+  boardsync_postgres_dev_data:
+    name: boardsync-postgres-dev-data
+  boardsync_pgadmin_dev_data:
+    name: boardsync-pgadmin-dev-data
