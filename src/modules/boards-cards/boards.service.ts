@@ -63,7 +63,12 @@ export class BoardsService {
     await this.boardsRepository.delete(boardId);
   }
 
-  async inviteMember(boardId: string, userId: string, email: string, role: UserRole): Promise<BoardMembership> {
+  async inviteMember(
+    boardId: string,
+    userId: string,
+    email: string,
+    role: UserRole,
+  ): Promise<BoardMembership> {
     // This would typically look up user by email
     // For now, assuming userId is provided directly
     const membership = this.membershipsRepository.create({
@@ -74,7 +79,11 @@ export class BoardsService {
     return this.membershipsRepository.save(membership);
   }
 
-  private async checkPermission(userId: string, boardId: string, allowedRoles: UserRole[]): Promise<void> {
+  private async checkPermission(
+    userId: string,
+    boardId: string,
+    allowedRoles: UserRole[],
+  ): Promise<void> {
     const membership = await this.membershipsRepository.findOne({
       where: { board: { id: boardId }, user: { id: userId } },
     });

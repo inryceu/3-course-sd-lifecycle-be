@@ -1,7 +1,16 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Unique } from 'typeorm';
-import { Board } from '../boards-cards/entities/board.entity';
-import { Card } from '../boards-cards/entities/card.entity';
-import { User } from '../../auth/entities/user.entity';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Unique,
+} from 'typeorm';
+import { Board } from '@modules/boards-cards/entities/board.entity';
+import { Card } from '@modules/boards-cards/entities/card.entity';
+import { User } from '@modules/auth/entities/user.entity';
 
 @Entity('jira_issue_mappings')
 @Unique(['board', 'jiraIssueKey'])

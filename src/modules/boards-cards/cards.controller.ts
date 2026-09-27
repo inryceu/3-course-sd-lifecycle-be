@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CardsService } from './cards.service';
 import { CreateCardDto } from './dto/create-card.dto';
@@ -38,7 +48,11 @@ export class CardsController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update card' })
   @ApiResponse({ status: 200, description: 'Card updated' })
-  async update(@CurrentUser('id') userId: string, @Param('id') id: string, @Body() updateCardDto: UpdateCardDto) {
+  async update(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() updateCardDto: UpdateCardDto,
+  ) {
     return this.cardsService.update(userId, id, updateCardDto);
   }
 

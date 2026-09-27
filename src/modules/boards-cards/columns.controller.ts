@@ -30,14 +30,22 @@ export class ColumnsController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update column' })
   @ApiResponse({ status: 200, description: 'Column updated' })
-  async update(@CurrentUser('id') userId: string, @Param('id') id: string, @Body() updateColumnDto: UpdateColumnDto) {
+  async update(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() updateColumnDto: UpdateColumnDto,
+  ) {
     return this.columnsService.update(userId, id, updateColumnDto);
   }
 
   @Patch(':id/reorder')
   @ApiOperation({ summary: 'Reorder column' })
   @ApiResponse({ status: 200, description: 'Column reordered' })
-  async reorder(@CurrentUser('id') userId: string, @Param('id') id: string, @Body('position') position: number) {
+  async reorder(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body('position') position: number,
+  ) {
     return this.columnsService.reorder(userId, id, position);
   }
 

@@ -1,4 +1,12 @@
-import { WebSocketGateway, WebSocketServer, SubscribeMessage, OnGatewayConnection, OnGatewayDisconnect, ConnectedSocket, MessageBody } from '@nestjs/websockets';
+import {
+  WebSocketGateway,
+  WebSocketServer,
+  SubscribeMessage,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  ConnectedSocket,
+  MessageBody,
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { UseGuards } from '@nestjs/common';
@@ -7,7 +15,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: process.env['FRONTEND_URL'] || 'http://localhost:5173',
     credentials: true,
   },
   namespace: '/realtime',
@@ -22,7 +30,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   handleConnection(client: Socket) {
     try {
-      const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.split(' ')[1];
+      const token =
+        client.handshake.auth?.token || client.handshake.headers?.authorization?.split(' ')[1];
       if (!token) {
         client.disconnect();
         return;
@@ -46,7 +55,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const clientData = this.connectedClients.get(client.id);
     if (clientData) {
       clientData.boards.add(data.boardId);
-      client.join(`board:${data.boardId}`);
+      void client.join(`board:${data.boardId}`);
       console.log(`Client ${client.id} joined board ${data.boardId}`);
     }
   }
@@ -56,7 +65,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const clientData = this.connectedClients.get(client.id);
     if (clientData) {
       clientData.boards.delete(data.boardId);
-      client.leave(`board:${data.boardId}`);
+      void client.leave(`board:${data.boardId}`);
       console.log(`Client ${client.id} left board ${data.boardId}`);
     }
   }

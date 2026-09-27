@@ -11,8 +11,15 @@ import {
 import { Board } from './board.entity';
 import { Card } from './card.entity';
 
+export enum ColumnType {
+  TODO = 'TODO',
+  IN_PROGRESS = 'IN_PROGRESS',
+  REVIEW = 'REVIEW',
+  DONE = 'DONE',
+}
+
 @Entity('columns')
-export class Column {
+export class BoardColumn {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

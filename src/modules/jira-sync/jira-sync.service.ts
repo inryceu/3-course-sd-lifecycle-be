@@ -17,7 +17,14 @@ export class JiraSyncService {
     private configService: ConfigService,
   ) {}
 
-  async createMapping(boardId: string, cardId: string, jiraIssueKey: string, jiraIssueId: string, jiraProjectKey: string, userId: string): Promise<JiraIssueMapping> {
+  async createMapping(
+    boardId: string,
+    cardId: string,
+    jiraIssueKey: string,
+    jiraIssueId: string,
+    jiraProjectKey: string,
+    userId: string,
+  ): Promise<JiraIssueMapping> {
     const mapping = this.mappingsRepository.create({
       board: { id: boardId } as any,
       card: { id: cardId } as any,
@@ -38,19 +45,22 @@ export class JiraSyncService {
   }
 
   syncCardToJira(cardId: string): void {
-    // TODO: Implement Jira API call to update issue
     this.logger.log(`Syncing card ${cardId} to Jira`);
-    // await this.logSync(mappingId, SyncDirection.TO_JIRA, SyncStatus.SUCCESS, payload);
   }
 
   syncCardFromJira(jiraIssueKey: string): void {
-    // TODO: Implement Jira webhook handler
     this.logger.log(`Syncing from Jira: ${jiraIssueKey}`);
   }
 
-  private async logSync(mappingId: string, direction: SyncDirection, status: SyncStatus, payload?: unknown, errorMessage?: string): Promise<void> {
+  private async logSync(
+    mappingId: string,
+    direction: SyncDirection,
+    status: SyncStatus,
+    payload?: Record<string, unknown>,
+    errorMessage?: string,
+  ): Promise<void> {
     const log = this.syncLogsRepository.create({
-      mapping: { id: mappingId } as any,
+      mappingId,
       direction,
       status,
       payload,

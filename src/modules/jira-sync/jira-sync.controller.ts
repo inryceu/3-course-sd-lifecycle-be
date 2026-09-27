@@ -16,7 +16,14 @@ export class JiraSyncController {
   @ApiResponse({ status: 201, description: 'Mapping created' })
   async createMapping(
     @CurrentUser('id') userId: string,
-    @Body() body: { cardId: string; boardId: string; jiraIssueKey: string; jiraIssueId: string; jiraProjectKey: string },
+    @Body()
+    body: {
+      cardId: string;
+      boardId: string;
+      jiraIssueKey: string;
+      jiraIssueId: string;
+      jiraProjectKey: string;
+    },
   ) {
     return this.jiraSyncService.createMapping(
       body.boardId,
@@ -45,8 +52,8 @@ export class JiraSyncController {
   @Post('sync/:cardId')
   @ApiOperation({ summary: 'Trigger sync for a card to Jira' })
   @ApiResponse({ status: 200, description: 'Sync triggered' })
-  async syncToJira(@Param('cardId') cardId: string) {
-    await this.jiraSyncService.syncCardToJira(cardId);
+  syncToJira(@Param('cardId') cardId: string) {
+    this.jiraSyncService.syncCardToJira(cardId);
     return { message: 'Sync triggered' };
   }
 }

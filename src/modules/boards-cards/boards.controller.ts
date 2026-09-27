@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { BoardsService } from './boards.service';
 import { CreateBoardDto } from './dto/create-board.dto';
@@ -39,7 +49,11 @@ export class BoardsController {
   @ApiOperation({ summary: 'Update board' })
   @ApiResponse({ status: 200, description: 'Board updated' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
-  async update(@CurrentUser('id') userId: string, @Param('id') id: string, @Body() updateBoardDto: UpdateBoardDto) {
+  async update(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() updateBoardDto: UpdateBoardDto,
+  ) {
     return this.boardsService.update(userId, id, updateBoardDto);
   }
 

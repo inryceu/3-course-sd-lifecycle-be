@@ -8,7 +8,7 @@ import {
   ManyToMany,
   JoinTable,
 } from 'typeorm';
-import { Column as BoardColumn } from './column.entity';
+import { BoardColumn } from './column.entity';
 import { BoardMembership } from './board-membership.entity';
 import { User } from '../../auth/entities/user.entity';
 

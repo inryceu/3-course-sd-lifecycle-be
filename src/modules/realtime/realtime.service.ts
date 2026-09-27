@@ -2,7 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { RealtimeGateway } from './realtime.gateway';
 
 export interface BoardUpdateEvent {
-  type: 'card.created' | 'card.updated' | 'card.moved' | 'card.deleted' | 'column.created' | 'column.updated' | 'column.deleted' | 'column.reordered';
+  type:
+    | 'card.created'
+    | 'card.updated'
+    | 'card.moved'
+    | 'card.deleted'
+    | 'column.created'
+    | 'column.updated'
+    | 'column.deleted'
+    | 'column.reordered';
   boardId: string;
   payload: any;
 }
@@ -23,7 +31,13 @@ export class RealtimeService {
     this.emitBoardUpdate({ type: 'card.updated', boardId, payload: card });
   }
 
-  emitCardMoved(boardId: string, cardId: string, fromColumnId: string, toColumnId: string, position: number) {
+  emitCardMoved(
+    boardId: string,
+    cardId: string,
+    fromColumnId: string,
+    toColumnId: string,
+    position: number,
+  ) {
     this.emitBoardUpdate({
       type: 'card.moved',
       boardId,

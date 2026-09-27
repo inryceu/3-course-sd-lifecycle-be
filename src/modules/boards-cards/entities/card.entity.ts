@@ -10,7 +10,7 @@ import {
   OneToMany,
   JoinColumn,
 } from 'typeorm';
-import { Column as BoardColumn } from './column.entity';
+import { BoardColumn } from './column.entity';
 import { Label } from './label.entity';
 import { Comment } from './comment.entity';
 import { User } from '../../auth/entities/user.entity';

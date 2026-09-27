@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Card } from './entities/card.entity';
-import { Column } from './entities/column.entity';
+import { BoardColumn } from './entities/column.entity';
 import { Label } from './entities/label.entity';
 import { CreateCardDto } from './dto/create-card.dto';
 import { UpdateCardDto } from './dto/update-card.dto';
@@ -13,8 +13,8 @@ export class CardsService {
   constructor(
     @InjectRepository(Card)
     private cardsRepository: Repository<Card>,
-    @InjectRepository(Column)
-    private columnsRepository: Repository<Column>,
+    @InjectRepository(BoardColumn)
+    private columnsRepository: Repository<BoardColumn>,
     @InjectRepository(Label)
     private labelsRepository: Repository<Label>,
     private boardsService: BoardsService,
@@ -96,7 +96,12 @@ export class CardsService {
     return this.cardsRepository.save(card);
   }
 
-  async move(userId: string, cardId: string, targetColumnId: string, newPosition: number): Promise<Card> {
+  async move(
+    userId: string,
+    cardId: string,
+    targetColumnId: string,
+    newPosition: number,
+  ): Promise<Card> {
     const card = await this.findOne(userId, cardId);
     const targetColumn = await this.columnsRepository.findOne({
       where: { id: targetColumnId },
@@ -109,7 +114,6 @@ export class CardsService {
 
     await this.boardsService.findOne(userId, targetColumn.board.id);
 
-    // Reorder cards in target column
     await this.cardsRepository
       .createQueryBuilder()
       .update(Card)

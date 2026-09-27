@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { JiraIssueMapping } from './jira-issue-mapping.entity';
 
 export enum SyncDirection {
@@ -30,10 +37,13 @@ export class SyncLog {
   @Column({ type: 'text', nullable: true })
   errorMessage: string | null;
 
+  @Column({ name: 'mapping_id', nullable: true })
+  mappingId: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
   @ManyToOne(() => JiraIssueMapping, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'mapping_id' })
-  mapping: JiraIssueMapping;
+  mapping: JiraIssueMapping | null;
 }
