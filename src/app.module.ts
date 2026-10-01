@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './modules/auth/auth.module';
 import { BoardsCardsModule } from './modules/boards-cards/boards-cards.module';
@@ -7,6 +7,7 @@ import { JiraSyncModule } from './modules/jira-sync/jira-sync.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { HealthModule } from './health/health.module';
 import configuration from './config/configuration';
+import { AppDataSource } from './config/database-config';
 
 @Module({
   imports: [
@@ -17,22 +18,15 @@ import configuration from './config/configuration';
       envFilePath: [`.env.${process.env['NODE_ENV'] || 'development'}`, '.env.local', '.env'],
     }),
 
-    // Database
+    // Database - uses shared DataSource configuration (single source of truth for app and CLI)
     TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get('database.host'),
-        port: configService.get('database.port'),
-        username: configService.get('database.username'),
-        password: configService.get('database.password'),
-        database: configService.get('database.name'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: configService.get('database.synchronize'),
-        logging: configService.get('database.logging'),
-        autoLoadEntities: true,
-      }),
-      inject: [ConfigService],
+      useFactory: async () => {
+        // Ensure the shared DataSource is initialized with the correct config
+        if (!AppDataSource.isInitialized) {
+          await AppDataSource.initialize();
+        }
+        return AppDataSource.options;
+      },
     }),
 
     // Feature modules

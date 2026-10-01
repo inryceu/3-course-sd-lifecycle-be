@@ -5,8 +5,6 @@
 # Separate network and volumes for complete isolation from prod
 # =============================================================================
 
-version: '3.8'
-
 services:
   # ---------------------------------------------------------------------------
   # PostgreSQL Database (Development)
@@ -20,7 +18,7 @@ services:
       POSTGRES_DB: boardsync_dev
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - boardsync_postgres_dev_data:/var/lib/postgresql/data
       - ./init-db:/docker-entrypoint-initdb.d:ro
@@ -45,6 +43,8 @@ services:
     container_name: boardsync-backend-dev
     environment:
       - NODE_ENV=development
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
     env_file:
       - .env.dev
     ports:
