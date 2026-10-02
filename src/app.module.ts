@@ -8,6 +8,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { HealthModule } from './health/health.module';
 import { validationSchema } from './config/validation.schema';
 import { allConfigs } from './config/configuration';
+import { AppDataSource } from './config/database-config';
 
 @Module({
   imports: [
@@ -15,28 +16,29 @@ import { allConfigs } from './config/configuration';
     ConfigModule.forRoot({
       isGlobal: true,
       load: allConfigs,
-      validationSchema: validationSchema,
+      validationSchema,
       validationOptions: {
         abortEarly: true, // fail fast on first error
       },
       envFilePath: [`.env.${process.env['NODE_ENV'] || 'development'}`, '.env.local', '.env'],
     }),
 
-    // Database - uses typed config namespaces
+    // Database - uses shared DataSource configuration (single source of truth for app and CLI)
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get('database.host'),
-        port: configService.get('database.port'),
-        username: configService.get('database.username'),
-        password: configService.get('database.password'),
-        database: configService.get('database.name'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: configService.get('database.synchronize'),
-        logging: configService.get('database.logging'),
-        autoLoadEntities: true,
-      }),
+      useFactory: async (configService: ConfigService) => {
+        // Ensure the shared DataSource is initialized with the correct config
+        if (!AppDataSource.isInitialized) {
+          await AppDataSource.initialize();
+        }
+        // Merge AppDataSource options with typed config values for consistency
+        return {
+          ...AppDataSource.options,
+          synchronize: configService.get('database.synchronize'),
+          logging: configService.get('database.logging'),
+          autoLoadEntities: true,
+        };
+      },
       inject: [ConfigService],
     }),
 
