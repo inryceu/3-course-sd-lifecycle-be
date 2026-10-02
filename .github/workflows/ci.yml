@@ -109,6 +109,12 @@ jobs:
           DATABASE_PASSWORD: postgres
           DATABASE_NAME: boardsync_test
           DATABASE_LOGGING: false
+          TOKEN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          WEBHOOK_SECRET: test-webhook-secret-min-32-chars
+          JIRA_CLIENT_ID: test-client-id
+          JIRA_CLIENT_SECRET: test-client-secret
+          JIRA_REDIRECT_URI: http://localhost:3000/api/v1/auth/jira/callback
+          FRONTEND_URL: http://localhost:5173
 
       - name: Run tests
         run: pnpm test
@@ -123,6 +129,12 @@ jobs:
           DATABASE_LOGGING: false
           JWT_SECRET: test-jwt-secret
           JWT_REFRESH_SECRET: test-refresh-secret
+          TOKEN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          WEBHOOK_SECRET: test-webhook-secret-min-32-chars
+          JIRA_CLIENT_ID: test-client-id
+          JIRA_CLIENT_SECRET: test-client-secret
+          JIRA_REDIRECT_URI: http://localhost:3000/api/v1/auth/jira/callback
+          FRONTEND_URL: http://localhost:5173
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3

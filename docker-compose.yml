@@ -5,6 +5,8 @@
 # Separate network and volumes for complete isolation from prod
 # =============================================================================
 
+version: '3.8'
+
 services:
   # ---------------------------------------------------------------------------
   # PostgreSQL Database (Development)
