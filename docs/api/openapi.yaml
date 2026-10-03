@@ -1,0 +1,1732 @@
+openapi: 3.0.3
+info:
+  title: BoardSync API
+  version: 1.0.0
+  description: |
+    Kanban board with two-way Jira synchronisation. This file is the single source of truth
+    for the REST contract (spec-first); the WebSocket contract is in `ws-events.md`.
+
+    Conventions
+    - Every operation requires a bearer JWT unless it overrides `security: []`.
+    - Operations carrying `x-implemented-in: T-<n>` are part of the contract but are built by
+      that ticket; operations without it are implemented.
+    - Errors always use the `Error` schema.
+    - Unbounded lists use cursor pagination (`limit`, `cursor`) and return `{ items, nextCursor }`;
+      small board-scoped lists return plain arrays.
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local backend
+  - url: http://localhost:8080/api/v1
+    description: Full compose stack (through the frontend proxy)
+security:
+  - bearerAuth: []
+tags:
+  - name: health
+  - name: auth
+  - name: boards
+  - name: columns
+  - name: cards
+  - name: labels
+  - name: comments
+  - name: members
+  - name: jira
+  - name: notifications
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Liveness and database readiness
+      security: []
+      responses:
+        '200':
+          description: Service and database are up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Database is not reachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: Create an account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Sign in with e-mail and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentUser
+      summary: Current user
+      responses:
+        '200':
+          description: The authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /boards:
+    get:
+      tags: [boards]
+      operationId: listBoards
+      summary: Boards the user belongs to
+      responses:
+        '200':
+          description: Boards ordered by creation time
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Board'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [boards]
+      operationId: createBoard
+      summary: Create a board with default columns; the creator becomes Admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBoardRequest'
+      responses:
+        '201':
+          description: Board with its three default columns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /boards/{boardId}:
+    parameters:
+      - $ref: '#/components/parameters/BoardId'
+    get:
+      tags: [boards]
+      operationId: getBoard
+      summary: Board with ordered columns and their ordered cards
+      responses:
+        '200':
+          description: Board detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [boards]
+      operationId: updateBoard
+      summary: Update board settings (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBoardRequest'
+      responses:
+        '200':
+          description: Updated board
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Board'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [boards]
+      operationId: deleteBoard
+      summary: Delete the board and everything it owns (Admin)
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /boards/{boardId}/columns:
+    parameters:
+      - $ref: '#/components/parameters/BoardId'
+    get:
+      tags: [columns]
+      operationId: listColumns
+      summary: Columns of a board ordered by position
+      responses:
+        '200':
+          description: Columns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Column'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [columns]
+      operationId: createColumn
+      summary: Add a column (Admin); appended unless a position is given
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateColumnRequest'
+      responses:
+        '201':
+          description: Created column
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Column'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /columns/{columnId}:
+    parameters:
+      - $ref: '#/components/parameters/ColumnId'
+    patch:
+      tags: [columns]
+      operationId: updateColumn
+      summary: Rename or retype a column (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateColumnRequest'
+      responses:
+        '200':
+          description: Updated column
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Column'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [columns]
+      operationId: deleteColumn
+      summary: Delete an empty column while at least three remain (Admin)
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /columns/{columnId}/reorder:
+    parameters:
+      - $ref: '#/components/parameters/ColumnId'
+    patch:
+      tags: [columns]
+      operationId: reorderColumn
+      summary: Move a column to a position (Admin, transactional)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReorderColumnRequest'
+      responses:
+        '200':
+          description: Columns of the board in their new order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Column'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /columns/{columnId}/cards:
+    parameters:
+      - $ref: '#/components/parameters/ColumnId'
+    get:
+      tags: [cards]
+      operationId: listCards
+      summary: Cards of a column ordered by position
+      responses:
+        '200':
+          description: Cards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Card'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [cards]
+      operationId: createCard
+      summary: Create a card at the end of the column (Member, Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCardRequest'
+      responses:
+        '201':
+          description: Created card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cards/{cardId}:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+    get:
+      tags: [cards]
+      operationId: getCard
+      summary: Card
+      responses:
+        '200':
+          description: Card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [cards]
+      operationId: updateCard
+      summary: Update card fields (Member, Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCardRequest'
+      responses:
+        '200':
+          description: Updated card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [cards]
+      operationId: deleteCard
+      summary: Delete a card (Member, Admin)
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cards/{cardId}/move:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+    patch:
+      tags: [cards]
+      operationId: moveCard
+      summary: Move a card to a column of the same board at a position (Member, Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveCardRequest'
+      responses:
+        '200':
+          description: Moved card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cards/{cardId}/assignee:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+    put:
+      tags: [cards]
+      operationId: assignCard
+      summary: Assign a board member to the card, or clear the assignee with null
+      x-implemented-in: T-19
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignCardRequest'
+      responses:
+        '200':
+          description: Updated card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /boards/{boardId}/labels:
+    parameters:
+      - $ref: '#/components/parameters/BoardId'
+    get:
+      tags: [labels]
+      operationId: listLabels
+      summary: Labels of a board
+      x-implemented-in: T-30
+      responses:
+        '200':
+          description: Labels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Label'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [labels]
+      operationId: createLabel
+      summary: Create a label (Member, Admin)
+      x-implemented-in: T-30
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLabelRequest'
+      responses:
+        '201':
+          description: Created label
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Label'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labels/{labelId}:
+    parameters:
+      - name: labelId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [labels]
+      operationId: updateLabel
+      summary: Rename or recolour a label (Member, Admin)
+      x-implemented-in: T-30
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLabelRequest'
+      responses:
+        '200':
+          description: Updated label
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Label'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [labels]
+      operationId: deleteLabel
+      summary: Delete a label (Member, Admin)
+      x-implemented-in: T-30
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cards/{cardId}/labels/{labelId}:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+      - name: labelId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [labels]
+      operationId: attachLabel
+      summary: Attach a label to a card (Member, Admin)
+      x-implemented-in: T-30
+      responses:
+        '200':
+          description: Updated card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [labels]
+      operationId: detachLabel
+      summary: Detach a label from a card (Member, Admin)
+      x-implemented-in: T-30
+      responses:
+        '200':
+          description: Updated card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cards/{cardId}/comments:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+    get:
+      tags: [comments]
+      operationId: listComments
+      summary: Comments of a card, oldest first
+      x-implemented-in: T-30
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of comments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [comments]
+      operationId: createComment
+      summary: Comment on a card; mirrored to Jira when the card is linked (Member, Admin)
+      x-implemented-in: T-30
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: Created comment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /boards/{boardId}/members:
+    parameters:
+      - $ref: '#/components/parameters/BoardId'
+    get:
+      tags: [members]
+      operationId: listMembers
+      summary: Members and their roles
+      x-implemented-in: T-18
+      responses:
+        '200':
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Member'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [members]
+      operationId: inviteMember
+      summary: Invite a registered user by e-mail with a role (Admin)
+      x-implemented-in: T-18
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteMemberRequest'
+      responses:
+        '201':
+          description: Created membership
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /boards/{boardId}/members/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/BoardId'
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [members]
+      operationId: changeMemberRole
+      summary: Change a member's role; a board keeps at least one Admin (Admin)
+      x-implemented-in: T-18
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeMemberRoleRequest'
+      responses:
+        '200':
+          description: Updated membership
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [members]
+      operationId: removeMember
+      summary: Remove a member (Admin)
+      x-implemented-in: T-18
+      responses:
+        '204':
+          description: Removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /jira/oauth/start:
+    get:
+      tags: [jira]
+      operationId: startJiraOAuth
+      summary: Start the OAuth 2.0 (3LO) flow for a board (Admin)
+      description: |
+        Returns the Atlassian authorise URL containing `state` and a PKCE `code_challenge`.
+        State and verifier are stored for 10 minutes. The client navigates to the URL.
+      parameters:
+        - $ref: '#/components/parameters/BoardIdQuery'
+      responses:
+        '200':
+          description: Authorise URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraOAuthStartResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /jira/oauth/callback:
+    get:
+      tags: [jira]
+      operationId: completeJiraOAuth
+      summary: Complete the flow with the code and state Atlassian redirected to the frontend with
+      description: |
+        Called by the frontend with the user's bearer token. The state must belong to the caller,
+        be unexpired and unused. A denied consent (`error`) is answered with 400.
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: error
+          in: query
+          description: Provider error such as `access_denied`
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraOAuthCallbackResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          description: Atlassian could not be reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /jira/connection:
+    get:
+      tags: [jira]
+      operationId: getJiraConnection
+      summary: Connection status of a board (any member)
+      parameters:
+        - $ref: '#/components/parameters/BoardIdQuery'
+      responses:
+        '200':
+          description: Status without tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraConnectionStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [jira]
+      operationId: disconnectJira
+      summary: Disconnect and delete stored credentials (Admin)
+      parameters:
+        - $ref: '#/components/parameters/BoardIdQuery'
+      responses:
+        '204':
+          description: Disconnected
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /jira/import:
+    post:
+      tags: [jira]
+      operationId: importJiraIssues
+      summary: Import open Jira issues of the linked project as cards (Admin)
+      x-implemented-in: T-24
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JiraImportRequest'
+      responses:
+        '200':
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraImportResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /jira/mappings:
+    get:
+      tags: [jira]
+      operationId: listJiraMappings
+      summary: Card to issue mappings of a board
+      x-implemented-in: T-23
+      parameters:
+        - $ref: '#/components/parameters/BoardIdQuery'
+      responses:
+        '200':
+          description: Mappings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JiraMapping'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [jira]
+      operationId: createJiraMapping
+      summary: Link a card to an existing Jira issue (Member, Admin)
+      x-implemented-in: T-23
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJiraMappingRequest'
+      responses:
+        '201':
+          description: Mapping
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraMapping'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /jira/webhook:
+    post:
+      tags: [jira]
+      operationId: receiveJiraWebhook
+      summary: Receive Jira issue events (verified with the webhook secret)
+      x-implemented-in: T-26
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '202':
+          description: Accepted for processing
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /jira/conflicts:
+    get:
+      tags: [jira]
+      operationId: listJiraConflicts
+      summary: Logged synchronisation conflicts of a board (Admin)
+      x-implemented-in: T-34
+      parameters:
+        - $ref: '#/components/parameters/BoardIdQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of conflicts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraConflictPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications:
+    get:
+      tags: [notifications]
+      operationId: listNotifications
+      summary: In-app notifications of the current user, newest first
+      x-implemented-in: T-32
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of notifications
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/{notificationId}/read:
+    post:
+      tags: [notifications]
+      operationId: markNotificationRead
+      summary: Mark a notification as read
+      x-implemented-in: T-32
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from `/auth/register` or `/auth/login`, valid for at most one hour.
+
+  parameters:
+    BoardId:
+      name: boardId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ColumnId:
+      name: columnId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CardId:
+      name: cardId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    BoardIdQuery:
+      name: boardId
+      in: query
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      description: Page size
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from the previous page's `nextCursor`
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Validation failed or the request is not acceptable in the current state
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing, invalid or expired token, or wrong credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The user's board role does not allow this operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: The resource does not exist or the user is not a member of its board
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: The request conflicts with the current state
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        error:
+          type: string
+          example: Bad Request
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: A message, or one message per invalid field
+        details:
+          type: object
+          additionalProperties: true
+
+    Health:
+      type: object
+      required: [status, database]
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        database:
+          type: string
+          enum: [up, down]
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: number
+
+    BoardRole:
+      type: string
+      enum: [ADMIN, MEMBER, VIEWER]
+    ColumnType:
+      type: string
+      enum: [TODO, IN_PROGRESS, REVIEW, DONE]
+
+    User:
+      type: object
+      required: [id, email, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          format: password
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    AuthResponse:
+      type: object
+      required: [accessToken, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Lifetime in seconds (at most 3600)
+        user:
+          $ref: '#/components/schemas/User'
+
+    Board:
+      type: object
+      required: [id, title, myRole, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        jiraProjectKey:
+          type: string
+          nullable: true
+        myRole:
+          $ref: '#/components/schemas/BoardRole'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    BoardDetail:
+      allOf:
+        - $ref: '#/components/schemas/Board'
+        - type: object
+          required: [columns]
+          properties:
+            columns:
+              type: array
+              items:
+                $ref: '#/components/schemas/ColumnWithCards'
+    CreateBoardRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+        jiraProjectKey:
+          type: string
+          maxLength: 50
+    UpdateBoardRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+          maxLength: 2000
+        jiraProjectKey:
+          type: string
+          nullable: true
+          maxLength: 50
+
+    Column:
+      type: object
+      required: [id, boardId, title, type, position]
+      properties:
+        id:
+          type: string
+          format: uuid
+        boardId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        type:
+          $ref: '#/components/schemas/ColumnType'
+        position:
+          type: integer
+          minimum: 0
+    ColumnWithCards:
+      allOf:
+        - $ref: '#/components/schemas/Column'
+        - type: object
+          required: [cards]
+          properties:
+            cards:
+              type: array
+              items:
+                $ref: '#/components/schemas/Card'
+    CreateColumnRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        type:
+          $ref: '#/components/schemas/ColumnType'
+        position:
+          type: integer
+          minimum: 0
+    UpdateColumnRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        type:
+          $ref: '#/components/schemas/ColumnType'
+    ReorderColumnRequest:
+      type: object
+      required: [position]
+      properties:
+        position:
+          type: integer
+          minimum: 0
+
+    Card:
+      type: object
+      required: [id, boardId, columnId, title, position, labelIds, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        boardId:
+          type: string
+          format: uuid
+        columnId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+        jiraIssueKey:
+          type: string
+          nullable: true
+        position:
+          type: integer
+          minimum: 0
+        assigneeId:
+          type: string
+          format: uuid
+          nullable: true
+        labelIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateCardRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 10000
+        deadline:
+          type: string
+          format: date-time
+        assigneeId:
+          type: string
+          format: uuid
+        labelIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+    UpdateCardRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+          maxLength: 10000
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+    MoveCardRequest:
+      type: object
+      required: [columnId, position]
+      properties:
+        columnId:
+          type: string
+          format: uuid
+        position:
+          type: integer
+          minimum: 0
+    AssignCardRequest:
+      type: object
+      required: [assigneeId]
+      properties:
+        assigneeId:
+          type: string
+          format: uuid
+          nullable: true
+
+    Label:
+      type: object
+      required: [id, boardId, name, color]
+      properties:
+        id:
+          type: string
+          format: uuid
+        boardId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        color:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+    CreateLabelRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        color:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+    UpdateLabelRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        color:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+
+    Comment:
+      type: object
+      required: [id, cardId, authorId, text, syncedToJira, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        cardId:
+          type: string
+          format: uuid
+        authorId:
+          type: string
+          format: uuid
+        text:
+          type: string
+        syncedToJira:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    CreateCommentRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 5000
+    CommentPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+        nextCursor:
+          type: string
+          nullable: true
+
+    Member:
+      type: object
+      required: [boardId, userId, role, email, displayName, invitedAt]
+      properties:
+        boardId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/BoardRole'
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        invitedAt:
+          type: string
+          format: date-time
+    InviteMemberRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [MEMBER, VIEWER]
+    ChangeMemberRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/BoardRole'
+
+    JiraOAuthStartResponse:
+      type: object
+      required: [authorizeUrl]
+      properties:
+        authorizeUrl:
+          type: string
+          format: uri
+    JiraOAuthCallbackResponse:
+      type: object
+      required: [connected, cloudId, siteUrl]
+      properties:
+        connected:
+          type: boolean
+        cloudId:
+          type: string
+        siteUrl:
+          type: string
+          format: uri
+    JiraConnectionStatus:
+      type: object
+      required: [connected, boardId]
+      description: Never contains tokens
+      properties:
+        connected:
+          type: boolean
+        boardId:
+          type: string
+          format: uuid
+        cloudId:
+          type: string
+          nullable: true
+        siteUrl:
+          type: string
+          format: uri
+          nullable: true
+        scopes:
+          type: array
+          items:
+            type: string
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        connectedAt:
+          type: string
+          format: date-time
+          nullable: true
+    JiraImportRequest:
+      type: object
+      required: [boardId]
+      properties:
+        boardId:
+          type: string
+          format: uuid
+        projectKey:
+          type: string
+    JiraImportResult:
+      type: object
+      required: [imported, skipped]
+      properties:
+        imported:
+          type: integer
+        skipped:
+          type: integer
+    JiraMapping:
+      type: object
+      required: [id, boardId, cardId, jiraIssueKey, jiraIssueId, jiraProjectKey]
+      properties:
+        id:
+          type: string
+          format: uuid
+        boardId:
+          type: string
+          format: uuid
+        cardId:
+          type: string
+          format: uuid
+        jiraIssueKey:
+          type: string
+        jiraIssueId:
+          type: string
+        jiraProjectKey:
+          type: string
+    CreateJiraMappingRequest:
+      type: object
+      required: [cardId, jiraIssueKey]
+      properties:
+        cardId:
+          type: string
+          format: uuid
+        jiraIssueKey:
+          type: string
+    JiraConflict:
+      type: object
+      required: [id, boardId, cardId, jiraIssueKey, boardStatus, jiraStatus, detectedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        boardId:
+          type: string
+          format: uuid
+        cardId:
+          type: string
+          format: uuid
+        jiraIssueKey:
+          type: string
+        boardStatus:
+          type: string
+        jiraStatus:
+          type: string
+        detectedAt:
+          type: string
+          format: date-time
+        resolution:
+          type: string
+          nullable: true
+    JiraConflictPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/JiraConflict'
+        nextCursor:
+          type: string
+          nullable: true
+
+    Notification:
+      type: object
+      required: [id, type, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [deadline.reminder, jira.conflict, board.invited]
+        payload:
+          type: object
+          additionalProperties: true
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    NotificationPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        nextCursor:
+          type: string
+          nullable: true

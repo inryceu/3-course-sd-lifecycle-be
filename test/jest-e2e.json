@@ -6,6 +6,9 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "testEnvironment": "node",
+  "globalSetup": "<rootDir>/global-setup.ts",
+  "setupFiles": ["<rootDir>/setup-env.ts"],
+  "testTimeout": 30000,
   "moduleNameMapper": {
     "^@/(.*)$": "<rootDir>/../src/$1",
     "^@modules/(.*)$": "<rootDir>/../src/modules/$1",
