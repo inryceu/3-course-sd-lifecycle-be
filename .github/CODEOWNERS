@@ -1,0 +1,32 @@
+# Code owners are requested for review automatically (see CONTRIBUTING.md).
+# Pavlo = @inryceu, Denys = @DenysP21, Edward = @2heist, Kyrylo = @KyryloBB
+# (Edward's handle is inferred from the collaborator list; confirm it.)
+
+# Default owner: the PM reviews everything not listed below.
+*                                   @inryceu
+
+# auth -> Denys
+/src/modules/auth/                  @DenysP21
+/test/auth.e2e-spec.ts              @DenysP21
+
+# boards-cards -> Pavlo
+/src/modules/boards/                @inryceu
+/test/boards.e2e-spec.ts            @inryceu
+
+# jira-sync -> Edward
+/src/modules/jira-sync/             @2heist
+/test/jira-oauth.e2e-spec.ts        @2heist
+
+# realtime and CI/DevOps -> Kyrylo
+/src/modules/realtime/              @KyryloBB
+/src/common/events/                 @KyryloBB
+/test/realtime.e2e-spec.ts          @KyryloBB
+/.github/workflows/                 @KyryloBB
+/Dockerfile                         @KyryloBB
+/docker-compose*.yml                @KyryloBB
+/init-db/                           @KyryloBB
+/scripts/setup-branch-protection.sh @KyryloBB
+
+# Contract and specs are agreed by every module owner.
+/docs/api/                          @inryceu @DenysP21 @2heist @KyryloBB
+/openspec/                          @inryceu
