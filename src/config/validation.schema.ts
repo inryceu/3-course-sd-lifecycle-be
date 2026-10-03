@@ -1,14 +1,37 @@
-import * as Joi from '@hapi/joi';
+import * as Joi from 'joi';
+
+const DURATION_PATTERN = /^(\d+)([smhd])$/;
+const SECONDS_PER_UNIT: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+const MAX_ACCESS_TOKEN_SECONDS = 3600;
+
+const accessTokenLifetime = Joi.string()
+  .pattern(DURATION_PATTERN)
+  .custom((value: string, helpers) => {
+    const match = DURATION_PATTERN.exec(value);
+    if (!match) return helpers.error('any.invalid');
+    const seconds = parseInt(match[1], 10) * SECONDS_PER_UNIT[match[2]];
+    if (seconds > MAX_ACCESS_TOKEN_SECONDS) {
+      return helpers.error('any.custom', {
+        error: new Error('JWT_EXPIRES_IN must be <= 1h (3600s)'),
+      });
+    }
+    return value;
+  })
+  .default('1h');
+
+const isProduction = Joi.valid('production');
 
 /**
  * Validation schema for environment variables.
- * Ensures the app fails fast on missing or invalid configuration.
+ * The application refuses to start when a required variable is missing or invalid.
+ * Secrets have no defaults on purpose.
  */
 export const validationSchema = Joi.object({
   // Application
   NODE_ENV: Joi.string().valid('development', 'production', 'test').required(),
   PORT: Joi.number().port().min(1).default(3000),
   API_PREFIX: Joi.string().default('api/v1'),
+  FRONTEND_URL: Joi.string().uri().required(),
 
   // Database
   DATABASE_HOST: Joi.string().hostname().required(),
@@ -16,66 +39,42 @@ export const validationSchema = Joi.object({
   DATABASE_USERNAME: Joi.string().required(),
   DATABASE_PASSWORD: Joi.string().required(),
   DATABASE_NAME: Joi.string().required(),
-  DATABASE_SYNCHRONIZE: Joi.boolean().default(false),
   DATABASE_LOGGING: Joi.boolean().default(false),
+  DATABASE_POOL_MAX: Joi.number().integer().min(1).default(10),
 
-  // JWT - expiresIn must be <= 1h (3600s) for security
+  // Authentication
   JWT_SECRET: Joi.string().min(32).required(),
-  JWT_EXPIRES_IN: Joi.string()
-    .pattern(/^\d+[smhd]$/)
-    .custom((value, helpers) => {
-      const match = value.match(/^(\d+)([smhd])$/);
-      if (!match) return helpers.error('any.invalid');
-      const value_num = parseInt(match[1], 10);
-      const unit = match[2];
-      let seconds = 0;
-      switch (unit) {
-        case 's':
-          seconds = value_num;
-          break;
-        case 'm':
-          seconds = value_num * 60;
-          break;
-        case 'h':
-          seconds = value_num * 3600;
-          break;
-        case 'd':
-          seconds = value_num * 86400;
-          break;
-      }
-      if (seconds > 3600) {
-        return helpers.error('any.invalid', { message: 'JWT_EXPIRES_IN must be <= 1h (3600s)' });
-      }
-      return value;
-    })
-    .default('1h'),
-  JWT_REFRESH_SECRET: Joi.string().min(32).required(),
-  JWT_REFRESH_EXPIRES_IN: Joi.string()
-    .pattern(/^\d+[smhd]$/)
-    .default('7d'),
+  JWT_EXPIRES_IN: accessTokenLifetime,
+  BCRYPT_ROUNDS: Joi.number().integer().min(10).max(15).default(10),
 
   // Jira OAuth 2.0 (3LO)
   JIRA_CLIENT_ID: Joi.string().required(),
   JIRA_CLIENT_SECRET: Joi.string().required(),
-  JIRA_REDIRECT_URI: Joi.string().uri().required(),
-  JIRA_SCOPES: Joi.string().default(
-    'read:jira-work,write:jira-work,read:jira-user,manage:jira-webhook',
-  ),
+  JIRA_REDIRECT_URI: Joi.string()
+    .uri()
+    .required()
+    .when('NODE_ENV', {
+      is: isProduction,
+      then: Joi.string().uri({ scheme: ['https'] }),
+    }),
+  JIRA_SCOPES: Joi.string().default('read:jira-work,write:jira-work,read:jira-user,offline_access'),
+  JIRA_AUTH_BASE_URL: Joi.string()
+    .uri()
+    .default('https://auth.atlassian.com')
+    .when('NODE_ENV', { is: isProduction, then: Joi.string().uri({ scheme: ['https'] }) }),
+  JIRA_API_BASE_URL: Joi.string()
+    .uri()
+    .default('https://api.atlassian.com')
+    .when('NODE_ENV', { is: isProduction, then: Joi.string().uri({ scheme: ['https'] }) }),
 
-  // Frontend URL (for CORS)
-  FRONTEND_URL: Joi.string().uri().required(),
-
-  // WebSocket
-  WS_PORT: Joi.number().port().min(1).default(3001),
-
-  // Crypto - TOKEN_ENCRYPTION_KEY must be 32 bytes (64 hex chars) for AES-256
+  // Crypto - TOKEN_ENCRYPTION_KEY must be 32 bytes (64 hex chars) for AES-256-GCM
   TOKEN_ENCRYPTION_KEY: Joi.string().hex().length(64).required(),
 
   // Webhook
   WEBHOOK_SECRET: Joi.string().min(32).required(),
 }).required();
 
-// Helper to convert Joi validation error to readable message
+/** Converts a Joi validation error to one readable message listing every problem. */
 export function formatValidationError(error: Joi.ValidationError): string {
   return error.details.map((detail) => `${detail.path.join('.')}: ${detail.message}`).join('; ');
 }

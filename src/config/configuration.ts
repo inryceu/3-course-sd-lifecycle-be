@@ -1,79 +1,97 @@
 import { registerAs } from '@nestjs/config';
 
 /**
- * App configuration namespace
+ * Typed configuration namespaces. Values are validated by `validation.schema.ts`
+ * before these factories run, so required values are always present here.
+ * Secrets deliberately have no fallbacks.
  */
-export const appConfig = registerAs('app', () => ({
-  nodeEnv: process.env['NODE_ENV'] || 'development',
-  port: parseInt(process.env['PORT'] || '3000', 10),
-  apiPrefix: process.env['API_PREFIX'] || 'api/v1',
-  frontendUrl: process.env['FRONTEND_URL'] || 'http://localhost:5173',
+
+export interface AppConfig {
+  nodeEnv: string;
+  port: number;
+  apiPrefix: string;
+  frontendUrl: string;
+}
+
+export interface JwtConfig {
+  secret: string;
+  expiresIn: string;
+  bcryptRounds: number;
+}
+
+export interface JiraConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  scopes: string[];
+  authBaseUrl: string;
+  apiBaseUrl: string;
+}
+
+export interface CryptoConfig {
+  tokenEncryptionKey: string;
+}
+
+export interface WebhookConfig {
+  secret: string;
+}
+
+export interface DatabaseConfig {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  name: string;
+  logging: boolean;
+}
+
+export const appConfig = registerAs('app', (): AppConfig => ({
+  nodeEnv: process.env['NODE_ENV'],
+  port: parseInt(process.env['PORT'] ?? '3000', 10),
+  apiPrefix: process.env['API_PREFIX'] ?? 'api/v1',
+  frontendUrl: process.env['FRONTEND_URL'],
 }));
 
-/**
- * Database configuration namespace
- */
-export const databaseConfig = registerAs('database', () => ({
-  host: process.env['DATABASE_HOST'] || 'localhost',
-  port: parseInt(process.env['DATABASE_PORT'] || '5432', 10),
-  username: process.env['DATABASE_USERNAME'] || 'postgres',
-  password: process.env['DATABASE_PASSWORD'] || 'postgres',
-  name: process.env['DATABASE_NAME'] || 'boardsync',
-  synchronize: process.env['DATABASE_SYNCHRONIZE'] === 'true',
+export const databaseConfig = registerAs('database', (): DatabaseConfig => ({
+  host: process.env['DATABASE_HOST'],
+  port: parseInt(process.env['DATABASE_PORT'] ?? '5432', 10),
+  username: process.env['DATABASE_USERNAME'],
+  password: process.env['DATABASE_PASSWORD'],
+  name: process.env['DATABASE_NAME'],
   logging: process.env['DATABASE_LOGGING'] === 'true',
 }));
 
-/**
- * JWT configuration namespace
- * JWT_EXPIRES_IN must be <= 1h (3600s) for security
- */
-export const jwtConfig = registerAs('jwt', () => ({
-  secret: process.env['JWT_SECRET'] || 'secret',
-  expiresIn: process.env['JWT_EXPIRES_IN'] || '1h',
-  refreshSecret: process.env['JWT_REFRESH_SECRET'] || 'refresh-secret',
-  refreshExpiresIn: process.env['JWT_REFRESH_EXPIRES_IN'] || '7d',
+/** JWT access-token settings. `JWT_EXPIRES_IN` is validated to be at most 1h. */
+export const jwtConfig = registerAs('jwt', (): JwtConfig => ({
+  secret: process.env['JWT_SECRET'],
+  expiresIn: process.env['JWT_EXPIRES_IN'] ?? '1h',
+  bcryptRounds: parseInt(process.env['BCRYPT_ROUNDS'] ?? '10', 10),
 }));
 
-/**
- * Jira OAuth 2.0 (3LO) configuration namespace
- */
-export const jiraConfig = registerAs('jira', () => ({
+/** Jira OAuth 2.0 (3LO) settings. Base URLs are overridable so tests can use a stub server. */
+export const jiraConfig = registerAs('jira', (): JiraConfig => ({
   clientId: process.env['JIRA_CLIENT_ID'],
   clientSecret: process.env['JIRA_CLIENT_SECRET'],
   redirectUri: process.env['JIRA_REDIRECT_URI'],
-  scopes: process.env['JIRA_SCOPES']?.split(',') || [
-    'read:jira-work',
-    'write:jira-work',
-    'read:jira-user',
-    'manage:jira-webhook',
-  ],
+  scopes: (
+    process.env['JIRA_SCOPES'] ?? 'read:jira-work,write:jira-work,read:jira-user,offline_access'
+  )
+    .split(',')
+    .map((scope) => scope.trim())
+    .filter((scope) => scope.length > 0),
+  authBaseUrl: process.env['JIRA_AUTH_BASE_URL'] ?? 'https://auth.atlassian.com',
+  apiBaseUrl: process.env['JIRA_API_BASE_URL'] ?? 'https://api.atlassian.com',
 }));
 
-/**
- * Crypto configuration namespace
- * TOKEN_ENCRYPTION_KEY must be 32 bytes (64 hex chars) for AES-256
- */
-export const cryptoConfig = registerAs('crypto', () => ({
+/** `TOKEN_ENCRYPTION_KEY` is 32 bytes encoded as 64 hex characters (AES-256-GCM). */
+export const cryptoConfig = registerAs('crypto', (): CryptoConfig => ({
   tokenEncryptionKey: process.env['TOKEN_ENCRYPTION_KEY'],
 }));
 
-/**
- * Webhook configuration namespace
- */
-export const webhookConfig = registerAs('webhook', () => ({
+export const webhookConfig = registerAs('webhook', (): WebhookConfig => ({
   secret: process.env['WEBHOOK_SECRET'],
 }));
 
-/**
- * WebSocket configuration namespace
- */
-export const websocketConfig = registerAs('websocket', () => ({
-  port: parseInt(process.env['WS_PORT'] || '3001', 10),
-}));
-
-/**
- * All configuration namespaces combined for ConfigModule
- */
 export const allConfigs = [
   appConfig,
   databaseConfig,
@@ -81,5 +99,4 @@ export const allConfigs = [
   jiraConfig,
   cryptoConfig,
   webhookConfig,
-  websocketConfig,
 ];
