@@ -30,3 +30,12 @@ Move files first (pure rename), then change code. No data migration. Roll back b
 ## Open Questions
 
 - Switch `tsconfig` to `strict: true`: not decided here.
+
+## Implementation notes (discovered while applying)
+
+- **Relative imports, not `@modules/*` aliases.** `nest build` does not rewrite path aliases, so an alias import compiles but fails at runtime in `dist` (the old `jira-issue-mapping.entity.ts` did exactly that). Cross-module imports are written `../../auth`; the boundary patterns match on the directory name, so the same rules catch aliases and relative paths.
+- **`@Public()` moved to `src/common/decorators`.** The reference module `health` must not depend on `auth`; the decorator is a shared-kernel concern, re-exported by the auth index for convenience.
+- **Rules live in `eslint-boundaries.js`** (one definition) and are consumed by `.eslintrc.js` and the Jest boundary test, which also lints the real `src` tree and proves it is not vacuous by loosening a pattern.
+- **`BoardAccessModule` is a `@Global()` module** inside `boards` that provides `BOARD_ACCESS` and `BOARDS_FACADE`, so `realtime` and `jira-sync` inject the tokens without importing `BoardsModule` (Nest would otherwise force the module import).
+- **`tsconfig.build.json`** excludes `test/` and `*.spec.ts`. Without it, tests that import `../src` made TypeScript infer the repository root as `rootDir` and emit `dist/src/main.js`, which broke `node dist/main.js` in the Docker image (found by running the full stack).
+- `lint` no longer passes `--fix`; `lint:fix` exists. Jest-only lint relaxations (unbound methods, loose test doubles) apply to `*.spec.ts` and `test/**` only.

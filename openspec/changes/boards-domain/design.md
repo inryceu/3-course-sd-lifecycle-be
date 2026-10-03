@@ -34,3 +34,10 @@ Generated migration reshapes tables (rename `column_id` constraints, add `board_
 ## Open Questions
 
 - None.
+
+## Implementation notes (discovered while applying)
+
+- Module `boards-cards` was renamed `boards`; `BoardAccessModule` (global) provides `BOARDS_FACADE` and `BOARD_ACCESS`; `inviteMember` was removed until T-18.
+- Mutations of positions (cards, columns) take a `pessimistic_write` lock on the board row inside the transaction, so concurrent reorders and moves serialise; covered by concurrency tests.
+- Creating a card with `assigneeId` requires the assignee to be a board member (400 otherwise); `labelIds` must belong to the board (labels have no endpoint until T-30).
+- `Card.moveTo` validates and mutates in memory; the service shifts neighbours with set-based `UPDATE`s and then writes the card.

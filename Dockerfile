@@ -64,7 +64,7 @@ RUN chown -R nestjs:nodejs /app
 USER nestjs
 
 # Expose ports
-EXPOSE 3000 3001
+EXPOSE 3000
 
 # Start with hot reload
 CMD ["pnpm", "start:dev"]

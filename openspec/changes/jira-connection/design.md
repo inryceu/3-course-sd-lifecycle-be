@@ -33,3 +33,9 @@ New tables `jira_connections` and `jira_oauth_states`; existing mapping and log 
 ## Open Questions
 
 - Which scope list the Atlassian app is registered with (T-14, out of scope here); the app must include `offline_access`.
+
+## Implementation notes (discovered while applying)
+
+- The default scope list drops `manage:jira-webhook` (not a valid classic OAuth scope) and adds `offline_access`; tests assert the authorise URL.
+- `jira_issue_mappings` keeps its unique `(board_id, jiraIssueKey)` rule as an index and loses its cross-module foreign keys, so deleting a card no longer cascades to its mapping; T-23 cleans mappings through events.
+- Verified in the component test: the verifier sent to the token endpoint hashes (S256) to the `code_challenge` of the authorise URL, and the stored token columns contain neither the plaintext nor the provider's value.

@@ -1,0 +1,111 @@
+# =============================================================================
+# BoardSync - full local stack: PostgreSQL + backend + frontend (nginx)
+# =============================================================================
+#   cp .env.full.example .env.full        # fill in the secrets (git-ignored)
+#   docker compose --env-file .env.full -f docker-compose.full.yml up --build
+#
+# Web UI:        http://localhost:8080          (frontend nginx)
+# REST API:      http://localhost:8080/api/v1   (proxied to the backend)
+# WebSocket:     http://localhost:8080/realtime (Socket.IO namespace, proxied)
+# Swagger UI:    http://localhost:8080/api/v1/docs
+# Backend direct (debugging): http://127.0.0.1:3000/api/v1
+# If port 8080 or 3000 is taken, set WEB_PORT / BACKEND_PORT in .env.full (the URLs above change accordingly).
+#
+# The frontend repository must be checked out next to this one
+# (../3-course-sd-lifecycle-fe) or FRONTEND_CONTEXT must point at it.
+# Decision record: docs/adr/0001-full-stack-compose.md
+# =============================================================================
+name: boardsync-full
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: boardsync-full-postgres
+    environment:
+      POSTGRES_USER: boardsync
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env.full}
+      POSTGRES_DB: boardsync
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - boardsync_full
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U boardsync -d boardsync']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: boardsync-backend:full
+    container_name: boardsync-full-backend
+    # Migrations run first; if one fails the container exits non-zero and nothing is served.
+    command: ['sh', '-c', 'node dist/database/migrate.js && node dist/main.js']
+    environment:
+      # `development` keeps http:// callback URLs valid (production demands https, see T-39).
+      NODE_ENV: development
+      PORT: 3000
+      API_PREFIX: api/v1
+      FRONTEND_URL: http://localhost:${WEB_PORT:-8080}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: boardsync
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env.full}
+      DATABASE_NAME: boardsync
+      DATABASE_LOGGING: 'false'
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET (>= 32 characters) in .env.full}
+      JWT_EXPIRES_IN: 1h
+      BCRYPT_ROUNDS: 10
+      JIRA_CLIENT_ID: ${JIRA_CLIENT_ID:?Set JIRA_CLIENT_ID in .env.full}
+      JIRA_CLIENT_SECRET: ${JIRA_CLIENT_SECRET:?Set JIRA_CLIENT_SECRET in .env.full}
+      JIRA_REDIRECT_URI: http://localhost:${WEB_PORT:-8080}/jira/callback
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?Set TOKEN_ENCRYPTION_KEY (64 hex characters) in .env.full}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET (>= 32 characters) in .env.full}
+    ports:
+      - '127.0.0.1:${BACKEND_PORT:-3000}:3000'
+    networks:
+      - boardsync_full
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/v1/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ${FRONTEND_CONTEXT:-../3-course-sd-lifecycle-fe}
+      dockerfile: Dockerfile
+      target: production
+      args:
+        # Same-origin URLs: the browser talks to nginx, nginx proxies to the backend.
+        VITE_API_URL: /api/v1
+        VITE_WS_URL: ''
+    # Set FRONTEND_IMAGE and run `up --no-build` to use a prebuilt image instead.
+    image: ${FRONTEND_IMAGE:-boardsync-frontend:full}
+    container_name: boardsync-full-frontend
+    ports:
+      - '${WEB_PORT:-8080}:80'
+    networks:
+      - boardsync_full
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  boardsync_full:
+    name: boardsync-full-network
+
+volumes:
+  postgres_data:
+    name: boardsync-postgres-full-data

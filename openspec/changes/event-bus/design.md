@@ -30,3 +30,9 @@ No data. Frontend switches to the namespace and event names from the contract.
 ## Open Questions
 
 - None.
+
+## Implementation notes (discovered while applying)
+
+- The publisher calls each registered listener itself (`emitter.listeners(type)` wrapped in `Promise.allSettled`) instead of `emitAsync`: a synchronous throw inside a raw listener would otherwise abort the remaining listeners. `@OnEvent` handlers registered by Nest are covered the same way.
+- The namespace middleware (`afterInit`) authenticates the handshake, so an unauthenticated socket never connects (`connect_error: unauthorized`). `RealtimeIoAdapter` applies the frontend origin as CORS policy because decorator options cannot read validated config.
+- Deleting a card publishes `board.updated` (the contract has no `card.deleted`); the contract document says clients refetch the board.

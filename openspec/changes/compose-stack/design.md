@@ -29,3 +29,9 @@ Additive: no existing compose file changes except the backend `Dockerfile` (adds
 ## Open Questions
 
 - None.
+
+## Implementation notes (discovered while applying)
+
+- Running the real stack found a defect in the image: it emitted `dist/src/main.js` instead of `dist/main.js` (fixed with `tsconfig.build.json`). Testing the migrations on an empty database found another one, the missing extension in the baseline (see config-persistence-hardening).
+- Host ports are configurable (`WEB_PORT`, `BACKEND_PORT` in `.env.full`) because 8080/3000 are often taken; the backend `FRONTEND_URL` and the Jira redirect URI follow `WEB_PORT`.
+- The dev compose file no longer maps the obsolete WebSocket port 3001 (Socket.IO shares the HTTP port).

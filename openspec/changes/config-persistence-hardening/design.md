@@ -32,3 +32,11 @@ Findings from the review of KAN-12/KAN-13: `.env.dev` key invalid; CI `JWT_SECRE
 ## Open Questions
 
 - None.
+
+## Implementation notes (discovered while applying)
+
+- **The baseline migration did not apply to an empty database.** It uses `uuid_generate_v4()` without creating the extension (`function uuid_generate_v4() does not exist`), which contradicted T-04's acceptance criterion. Decision 8 is refined: the baseline keeps its generated DDL but gets one added line, `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`; databases where it already ran are unaffected because the migration is not re-run.
+- **The generated additive migration was made data preserving by hand**: timestamp columns are converted with `ALTER ... TYPE` instead of drop/add, `cards.board_id` is backfilled from the column, `invitedAt` is copied into `createdAt`, e-mails are lower-cased, the legacy `board_members` table is dropped, rows that would violate new NOT NULL constraints (orphans) and legacy global labels are removed, and `down` reverses all of it. Verified with legacy data (upgrade and downgrade) and by `migration:generate --check` reporting no drift.
+- **Env file precedence**: `.env.<env>.local`, `.env.local`, `.env.<env>`, `.env` (first wins). The old code loaded `.env.dev` as a fallback for every environment, so a missing production secret could silently take a development value; `.env.dev` is now only used for `development`. `ConfigModule` and the CLI share `envFilePaths()`.
+- The app spreads `dataSourceOptions` but takes connection values from the validated config, and sets `entities: []`/`migrations: []` (entities arrive through `autoLoadEntities`).
+- Integration tests: `test/global-setup.ts` drops the test database and applies all migrations; `migrations.e2e-spec.ts` uses a scratch database.

@@ -33,3 +33,9 @@ Migration drops `users.role` and `users.refreshTokenHash`, lower-cases existing 
 ## Open Questions
 
 - None.
+
+## Implementation notes (discovered while applying)
+
+- `JwtAuthGuard` returns `true` for non-HTTP contexts, so the global guard never interferes with WebSocket handlers (the gateway authenticates the handshake through `AUTH_FACADE`).
+- Passwords are limited to 72 characters because bcrypt ignores the rest; the limit is in the DTO and the contract.
+- The e-mail is normalised in the DTO transform **and** in the service, so callers other than the controller get the same behaviour; uniqueness is the unique index on `users.email`.

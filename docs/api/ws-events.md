@@ -58,7 +58,7 @@ All events share one envelope. The Socket.IO event name equals `type`.
 | `card.updated` | Title, description, deadline, assignee or labels changed | `Card` |
 | `card.moved` | A card changed column or position | `{ "card": Card, "fromColumnId": "uuid", "toColumnId": "uuid", "position": 0 }` |
 | `card.commented` | A comment was added | `Comment` |
-| `board.updated` | Board settings or columns changed (create, rename, retype, reorder, delete), or a card was deleted — clients refetch the board | `{ "board": Board }` |
+| `board.updated` | Board settings or columns changed (create, rename, retype, reorder, delete), or a card was deleted — clients refetch the board | `{ "board": Board }` without `myRole` (it is per user; keep your own) |
 | `notification.created` | A notification for one user was created | `{ "recipientId": "uuid", "notification": Notification }` |
 
 `notification.created` is addressed to one user, so it is **not** sent to the board room: every authenticated socket is placed in the personal room `user:{userId}` on connect and receives it there. Its `boardId` is the board the notification is about.
