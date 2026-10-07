@@ -9,9 +9,9 @@
   - Check backend `README.md` documents `pnpm api:sync && pnpm api:generate`
   - Check frontend `README.md` documents the same commands and CI drift check
 
-- [ ] 3.1 Obtain approval from all four module owners
+- [x] 3.1 Obtain approval from all four module owners
   - Verification: explicit **Approve** reviews on the PR
 
-- [ ] 4.1 Record any owner-requested changes in design.md
+- [x] 4.1 Record any owner-requested changes in design.md
   - If owners request modifications during review, append decision and rationale to `design.md`
   - Verification: `design.md` updated with dated entries referencing the PR discussion
