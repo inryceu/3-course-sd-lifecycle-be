@@ -1,50 +1,55 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuthModule } from './modules/auth/auth.module';
-import { BoardsCardsModule } from './modules/boards-cards/boards-cards.module';
-import { JiraSyncModule } from './modules/jira-sync/jira-sync.module';
-import { RealtimeModule } from './modules/realtime/realtime.module';
-import { HealthModule } from './health/health.module';
+import { EventBusModule } from './common/events';
+import { allConfigs, DatabaseConfig } from './config/configuration';
+import { dataSourceOptions } from './config/database-config';
+import { envFilePaths } from './config/env-files';
 import { validationSchema } from './config/validation.schema';
-import { allConfigs } from './config/configuration';
-import { AppDataSource } from './config/database-config';
+import { AuthModule } from './modules/auth';
+import { BoardsModule } from './modules/boards';
+import { HealthModule } from './modules/health';
+import { JiraSyncModule } from './modules/jira-sync';
+import { RealtimeModule } from './modules/realtime';
 
 @Module({
   imports: [
-    // Configuration with validation schema - fails fast on missing/invalid env vars
+    // Validated, typed configuration. The app refuses to start on missing or invalid variables.
     ConfigModule.forRoot({
       isGlobal: true,
       load: allConfigs,
       validationSchema,
-      validationOptions: {
-        abortEarly: true, // fail fast on first error
-      },
-      envFilePath: [`.env.${process.env['NODE_ENV'] || 'development'}`, '.env.local', '.env'],
+      validationOptions: { abortEarly: false },
+      envFilePath: envFilePaths(),
     }),
 
-    // Database - uses shared DataSource configuration (single source of truth for app and CLI)
+    // One DataSource definition (src/config/database-config.ts) shared with the TypeORM CLI.
+    // Connection values come from the validated configuration; entities are registered by the
+    // modules that own them (autoLoadEntities + TypeOrmModule.forFeature), and migrations are
+    // run by the migration runner, never by the app.
     TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => {
-        // Ensure the shared DataSource is initialized with the correct config
-        if (!AppDataSource.isInitialized) {
-          await AppDataSource.initialize();
-        }
-        // Merge AppDataSource options with typed config values for consistency
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const database = config.getOrThrow<DatabaseConfig>('database');
         return {
-          ...AppDataSource.options,
-          synchronize: configService.get('database.synchronize'),
-          logging: configService.get('database.logging'),
+          ...dataSourceOptions,
+          host: database.host,
+          port: database.port,
+          username: database.username,
+          password: database.password,
+          database: database.name,
+          logging: database.logging,
+          entities: [],
+          migrations: [],
           autoLoadEntities: true,
+          synchronize: false,
         };
       },
-      inject: [ConfigService],
     }),
 
-    // Feature modules
+    EventBusModule,
     AuthModule,
-    BoardsCardsModule,
+    BoardsModule,
     JiraSyncModule,
     RealtimeModule,
     HealthModule,

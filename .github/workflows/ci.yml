@@ -60,9 +60,30 @@ jobs:
       - name: Run typecheck
         run: pnpm typecheck
 
+      - name: Validate OpenAPI contract
+        run: pnpm api:validate
+
   test:
     name: Tests
     runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      FRONTEND_URL: http://localhost:5173
+      DATABASE_HOST: localhost
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: postgres
+      DATABASE_NAME: boardsync_test
+      DATABASE_LOGGING: false
+      JWT_SECRET: ci-test-jwt-secret-with-at-least-32-characters
+      JWT_EXPIRES_IN: 1h
+      BCRYPT_ROUNDS: 10
+      JIRA_CLIENT_ID: test-client-id
+      JIRA_CLIENT_SECRET: test-client-secret
+      JIRA_REDIRECT_URI: http://localhost:5173/jira/callback
+      TOKEN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      WEBHOOK_SECRET: ci-test-webhook-secret-with-at-least-32-chars
     services:
       postgres:
         image: postgres:16-alpine
@@ -101,40 +122,12 @@ jobs:
 
       - name: Run migrations
         run: pnpm migration:run
-        env:
-          NODE_ENV: test
-          DATABASE_HOST: localhost
-          DATABASE_PORT: 5432
-          DATABASE_USERNAME: postgres
-          DATABASE_PASSWORD: postgres
-          DATABASE_NAME: boardsync_test
-          DATABASE_LOGGING: false
-          TOKEN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-          WEBHOOK_SECRET: test-webhook-secret-min-32-chars
-          JIRA_CLIENT_ID: test-client-id
-          JIRA_CLIENT_SECRET: test-client-secret
-          JIRA_REDIRECT_URI: http://localhost:3000/api/v1/auth/jira/callback
-          FRONTEND_URL: http://localhost:5173
 
-      - name: Run tests
-        run: pnpm test
-        env:
-          NODE_ENV: test
-          DATABASE_HOST: localhost
-          DATABASE_PORT: 5432
-          DATABASE_USERNAME: postgres
-          DATABASE_PASSWORD: postgres
-          DATABASE_NAME: boardsync_test
-          DATABASE_SYNCHRONIZE: false
-          DATABASE_LOGGING: false
-          JWT_SECRET: test-jwt-secret
-          JWT_REFRESH_SECRET: test-refresh-secret
-          TOKEN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-          WEBHOOK_SECRET: test-webhook-secret-min-32-chars
-          JIRA_CLIENT_ID: test-client-id
-          JIRA_CLIENT_SECRET: test-client-secret
-          JIRA_REDIRECT_URI: http://localhost:3000/api/v1/auth/jira/callback
-          FRONTEND_URL: http://localhost:5173
+      - name: Run unit tests
+        run: pnpm test:cov
+
+      - name: Run integration tests (real PostgreSQL)
+        run: pnpm test:e2e
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
