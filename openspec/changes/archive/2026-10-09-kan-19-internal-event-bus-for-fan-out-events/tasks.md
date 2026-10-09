@@ -2,11 +2,11 @@
 
 ## 1. Create Jira-Sync Event Listener
 
-- [ ] 1.1 Create `src/modules/jira-sync/application/board-events.listener.ts` with `@OnEvent` handlers for `card.created`, `card.updated`, `card.moved`, `card.commented`, `board.updated` — verify file exists and compiles
-- [ ] 1.2 Inject `JiraConnectionService` and `ATLASSIAN_OAUTH` port; implement `origin === 'jira'` filter at handler entry — verify TypeScript compiles (`pnpm build`)
-- [ ] 1.3 Implement `boardId` → Jira connection lookup using `JiraConnectionService.getConnection(boardId)` — verify unit test passes
-- [ ] 1.4 Implement outbound sync calls per event type (create issue, update issue, transition issue, add comment, update project) — verify unit test passes
-- [ ] 1.5 Handle missing Jira connection gracefully (log warning, skip) — verify unit test passes
+- [x] 1.1 Create `src/modules/jira-sync/application/board-events.listener.ts` with `@OnEvent` handlers for `card.created`, `card.updated`, `card.moved`, `card.commented`, `board.updated` — verify file exists and compiles
+- [x] 1.2 Inject `JiraConnectionService` and `ATLASSIAN_OAUTH` port; implement `origin === 'jira'` filter at handler entry — verify TypeScript compiles (`pnpm build`)
+- [x] 1.3 Implement `boardId` → Jira connection lookup using `JiraConnectionService.getConnection(boardId)` — verify unit test passes
+- [x] 1.4 Implement outbound sync calls per event type (create issue, update issue, transition issue, add comment, update project) — verify unit test passes
+- [x] 1.5 Handle missing Jira connection gracefully (log warning, skip) — verify unit test passes
 
 ## 2. Register Listener in Module
 
