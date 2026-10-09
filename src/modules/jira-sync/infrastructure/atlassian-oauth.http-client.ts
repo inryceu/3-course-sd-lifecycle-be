@@ -4,6 +4,9 @@ import {
   AccessibleResource,
   AtlassianOAuth,
   AtlassianTokens,
+  JiraIssueFields,
+  JiraIssueResponse,
+  JiraTransitionResponse,
 } from '../application/atlassian-oauth.port';
 import { AtlassianRejectedError, AtlassianUnavailableError } from '../domain/errors';
 
@@ -15,6 +18,11 @@ interface TokenResponse {
   expires_in?: number;
   scope?: string;
   error?: string;
+}
+
+interface JiraErrorResponse {
+  errorMessages?: string[];
+  errors?: Record<string, string>;
 }
 
 /**
@@ -86,6 +94,169 @@ export class AtlassianOAuthHttpClient implements AtlassianOAuth {
         name: String(item['name'] ?? ''),
         scopes: Array.isArray(item['scopes']) ? item['scopes'].map(String) : [],
       }));
+  }
+
+  async createIssue(input: {
+    accessToken: string;
+    cloudId: string;
+    siteUrl: string;
+    fields: JiraIssueFields;
+  }): Promise<JiraIssueResponse> {
+    const response = await this.jiraRequest(input.siteUrl, `/rest/api/3/issue`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ fields: input.fields }),
+    });
+    if (!response.ok) {
+      this.logger.warn(`Create issue failed: HTTP ${response.status}`);
+      if (response.status >= 500) {
+        throw new AtlassianUnavailableError(`HTTP ${response.status}`);
+      }
+      const json = (await this.readJson(response)) as JiraErrorResponse;
+      throw new AtlassianRejectedError(json.errorMessages?.[0] ?? 'create_failed', response.status);
+    }
+    return this.readJson(response) as Promise<JiraIssueResponse>;
+  }
+
+  async updateIssue(input: {
+    accessToken: string;
+    cloudId: string;
+    siteUrl: string;
+    issueKey: string;
+    fields: Partial<JiraIssueFields>;
+  }): Promise<void> {
+    const response = await this.jiraRequest(input.siteUrl, `/rest/api/3/issue/${input.issueKey}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ fields: input.fields }),
+    });
+    if (!response.ok) {
+      this.logger.warn(`Update issue failed: HTTP ${response.status}`);
+      if (response.status >= 500) {
+        throw new AtlassianUnavailableError(`HTTP ${response.status}`);
+      }
+      const json = (await this.readJson(response)) as JiraErrorResponse;
+      throw new AtlassianRejectedError(json.errorMessages?.[0] ?? 'update_failed', response.status);
+    }
+  }
+
+  async getTransitions(input: {
+    accessToken: string;
+    cloudId: string;
+    siteUrl: string;
+    issueKey: string;
+  }): Promise<JiraTransitionResponse> {
+    const response = await this.jiraRequest(
+      input.siteUrl,
+      `/rest/api/3/issue/${input.issueKey}/transitions`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${input.accessToken}`, Accept: 'application/json' },
+      },
+    );
+    if (!response.ok) {
+      this.logger.warn(`Get transitions failed: HTTP ${response.status}`);
+      if (response.status >= 500) {
+        throw new AtlassianUnavailableError(`HTTP ${response.status}`);
+      }
+      const json = (await this.readJson(response)) as JiraErrorResponse;
+      throw new AtlassianRejectedError(
+        json.errorMessages?.[0] ?? 'transitions_failed',
+        response.status,
+      );
+    }
+    return this.readJson(response) as Promise<JiraTransitionResponse>;
+  }
+
+  async transitionIssue(input: {
+    accessToken: string;
+    cloudId: string;
+    siteUrl: string;
+    issueKey: string;
+    transitionId: string;
+  }): Promise<void> {
+    const response = await this.jiraRequest(
+      input.siteUrl,
+      `/rest/api/3/issue/${input.issueKey}/transitions`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${input.accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ transition: { id: input.transitionId } }),
+      },
+    );
+    if (!response.ok) {
+      this.logger.warn(`Transition issue failed: HTTP ${response.status}`);
+      if (response.status >= 500) {
+        throw new AtlassianUnavailableError(`HTTP ${response.status}`);
+      }
+      const json = (await this.readJson(response)) as JiraErrorResponse;
+      throw new AtlassianRejectedError(
+        json.errorMessages?.[0] ?? 'transition_failed',
+        response.status,
+      );
+    }
+  }
+
+  async addComment(input: {
+    accessToken: string;
+    cloudId: string;
+    siteUrl: string;
+    issueKey: string;
+    body: string;
+  }): Promise<void> {
+    const response = await this.jiraRequest(
+      input.siteUrl,
+      `/rest/api/3/issue/${input.issueKey}/comment`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${input.accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          body: {
+            type: 'doc',
+            version: 1,
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: input.body }] }],
+          },
+        }),
+      },
+    );
+    if (!response.ok) {
+      this.logger.warn(`Add comment failed: HTTP ${response.status}`);
+      if (response.status >= 500) {
+        throw new AtlassianUnavailableError(`HTTP ${response.status}`);
+      }
+      const json = (await this.readJson(response)) as JiraErrorResponse;
+      throw new AtlassianRejectedError(
+        json.errorMessages?.[0] ?? 'comment_failed',
+        response.status,
+      );
+    }
+  }
+
+  private async jiraRequest(siteUrl: string, path: string, init: RequestInit): Promise<Response> {
+    const url = `${siteUrl.replace(/\/+$/, '')}${path}`;
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    } catch (error) {
+      const reason = error instanceof Error ? error.name : 'network error';
+      this.logger.warn(`Jira request failed: ${reason}`);
+      throw new AtlassianUnavailableError(reason);
+    }
   }
 
   private async request(url: string, init: RequestInit): Promise<Response> {

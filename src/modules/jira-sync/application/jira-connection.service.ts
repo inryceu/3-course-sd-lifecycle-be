@@ -15,6 +15,16 @@ export interface JiraConnectionStatus {
   connectedAt: string | null;
 }
 
+/** Raw connection with encrypted tokens for internal use (e.g., event listeners). */
+export interface JiraConnectionInternal {
+  boardId: string;
+  cloudId: string;
+  siteUrl: string;
+  accessTokenEnc: string;
+  refreshTokenEnc: string | null;
+  scopes: string[];
+}
+
 @Injectable()
 export class JiraConnectionService {
   constructor(
@@ -49,6 +59,22 @@ export class JiraConnectionService {
       scopes: connection.scopes,
       expiresAt: connection.expiresAt.toISOString(),
       connectedAt: connection.connectedAt.toISOString(),
+    };
+  }
+
+  /** Gets the raw connection (with encrypted tokens) for internal use by event listeners. */
+  async getConnectionForSync(boardId: string): Promise<JiraConnectionInternal | null> {
+    const connection = await this.connections.findOne({ where: { boardId } });
+    if (!connection) {
+      return null;
+    }
+    return {
+      boardId: connection.boardId,
+      cloudId: connection.cloudId,
+      siteUrl: connection.siteUrl,
+      accessTokenEnc: connection.accessTokenEnc,
+      refreshTokenEnc: connection.refreshTokenEnc,
+      scopes: connection.scopes,
     };
   }
 

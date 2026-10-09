@@ -4,6 +4,7 @@ import { AuthModule } from '../auth';
 import { ATLASSIAN_OAUTH } from './application/atlassian-oauth.port';
 import { JiraConnectionService } from './application/jira-connection.service';
 import { JiraOAuthService } from './application/jira-oauth.service';
+import { BoardEventsListener } from './application/board-events.listener';
 import { TOKEN_CIPHER } from './application/token-cipher.port';
 import { AesGcmTokenCipher } from './infrastructure/aes-gcm-token-cipher';
 import { AtlassianOAuthHttpClient } from './infrastructure/atlassian-oauth.http-client';
@@ -28,6 +29,7 @@ import { JiraOAuthController } from './presentation/jira-oauth.controller';
   providers: [
     JiraOAuthService,
     JiraConnectionService,
+    BoardEventsListener,
     AesGcmTokenCipher,
     AtlassianOAuthHttpClient,
     { provide: TOKEN_CIPHER, useExisting: AesGcmTokenCipher },
