@@ -8,6 +8,8 @@ BoardSync lives in two repositories with the **same rules**: `3-course-sd-lifecy
 Jira ticket KAN-<n>  ->  branch KAN-<n> (from dev)  ->  OpenSpec propose  ->  implement  ->  PR into dev  ->  review + green CI  ->  merge  ->  OpenSpec archive
 ```
 
+Jira workflow, sprints, Definition of Done and the risk register: [docs/process.md](./docs/process.md).
+
 ## Branches
 
 - One branch per ticket, named after the Jira key: **`KAN-<n>`** (e.g. `KAN-42`). Create it from `dev`.
