@@ -25,6 +25,8 @@ Everything a developer needs to run the Jira integration against a real Jira Clo
 4. **Settings** → copy the **Client ID** and **Secret**.
 5. **Distribution** can stay *Not sharing*: an app that is not distributed can still be authorised by members of the sites its owner administers.
 
+**Team app (created 2026-10-21):** `BoardSync (dev)` in Pavlo's developer console, access type *Resource-level* (the user picks one site at consent), classic scopes `read:jira-work`, `write:jira-work`, `read:jira-user`, `manage:jira-webhook`, callback URLs `http://localhost:8090/jira/callback` (full stack with `WEB_PORT=8090`) and `http://localhost:5173/jira/callback` (`pnpm dev`). Ask Pavlo for the Client ID and Secret (section 3). Using another `WEB_PORT` means adding its callback URL in the console first.
+
 The backend requests `JIRA_SCOPES` (default `read:jira-work,write:jira-work,read:jira-user,offline_access`). Add `manage:jira-webhook` to `JIRA_SCOPES` when T-26 starts registering webhooks; it is a valid classic 3LO scope (the archived `jira-connection` design note that called it invalid is wrong). Every scope in `JIRA_SCOPES` must also be configured in the console, otherwise Atlassian rejects the authorise request.
 
 ## 3. Credentials: share, never commit
@@ -46,8 +48,17 @@ The backend requests `JIRA_SCOPES` (default `read:jira-work,write:jira-work,read
 
 1. Start the backend and the frontend, register and create a board.
 2. As the board Admin call `GET /api/v1/jira/oauth/start?boardId=<board id>` (Swagger UI) and open the returned `authorizeUrl`.
-3. Accept the consent screen for the sandbox site. Atlassian redirects to `/jira/callback?code=…&state=…`; the frontend page for it arrives with T-29, until then call `GET /api/v1/jira/oauth/callback?code=…&state=…` yourself with the same bearer token.
-4. `GET /api/v1/jira/connection?boardId=<board id>` shows `connected: true` and the sandbox site URL.
+3. Or simply use the web client: **Jira Sync** → **Connect Jira** on the board.
+4. Accept the consent screen for the sandbox site. Atlassian redirects to the frontend page `/jira/callback?code=…&state=…`, which completes the flow and shows the connected site.
+5. `GET /api/v1/jira/connection?boardId=<board id>` (or the Jira Sync page) shows `connected: true` and the sandbox site URL.
+
+### Troubleshooting
+
+| Atlassian says | Cause | Fix |
+| --- | --- | --- |
+| `invalid_request` / `failed to retrieve client` | `JIRA_CLIENT_ID` is still the placeholder or belongs to a deleted app | put the real Client ID and Secret into `.env.full` / `.env.local`, then `docker compose --env-file .env.full -f docker-compose.full.yml up -d backend` |
+| `redirect_uri` mismatch | `JIRA_REDIRECT_URI` (full stack: `http://localhost:<WEB_PORT>/jira/callback`) is not in the app's callback URLs | add it under **Authorization** in the console |
+| `invalid_scope` | a scope in `JIRA_SCOPES` is not configured in the console | add it under **Permissions** → Jira API |
 
 ## 5. Webhooks to a laptop through a tunnel
 
@@ -72,7 +83,7 @@ Later (T-26) the backend registers its own webhook through the REST API with the
 ## Checklist (T-14)
 
 - [ ] Sandbox site and project `SBX` with To Do / In Progress / In Review / Done and sample issues
-- [ ] OAuth 2.0 (3LO) app with the scopes above and the local callback URL(s)
+- [x] OAuth 2.0 (3LO) app with the scopes above and the local callback URL(s)
 - [ ] Client ID and Secret shared through the password manager, present in everyone's `.env.local`
 - [ ] Connect flow (section 4) succeeds against the sandbox
 - [ ] A webhook reaches a laptop through the tunnel (section 5)
