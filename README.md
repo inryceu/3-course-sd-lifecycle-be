@@ -90,6 +90,8 @@ docker compose --env-file .env.full -f docker-compose.full.yml up --build
 | Swagger UI | http://localhost:8080/api/v1/docs |
 | Backend directly (debugging) | http://127.0.0.1:3000/api/v1 |
 
+To check the whole stack in one go (build, wait for every healthcheck, migrations, REST and WebSocket through the web port), run `./scripts/full-stack-smoke.sh` (add `--down` to stop it and delete the data afterwards).
+
 Startup order is gated by health checks (postgres -> backend with migrations applied -> frontend); data lives in the named volume `boardsync-postgres-full-data`. Stop with `docker compose -f docker-compose.full.yml down` (add `-v` to delete the data). Rationale: [`docs/adr/0001-full-stack-compose.md`](docs/adr/0001-full-stack-compose.md).
 
 The per-environment compose files remain: `docker-compose.yml` (development, hot reload) and `docker-compose.prod.yml` (production-like).
@@ -119,7 +121,7 @@ Every variable is validated at startup (`src/config/validation.schema.ts`); the 
 - **Generate frontend types:** in the frontend repository run `pnpm api:sync && pnpm api:generate` (copies this spec and regenerates `src/api/api.generated.ts`; running it twice gives identical output).
 - **Authentication:** `POST /api/v1/auth/register` or `/login` return `{ accessToken, expiresIn, user }`; send `Authorization: Bearer <accessToken>`. Tokens last at most one hour; there is no refresh endpoint - log in again after a 401.
 - **Roles are per board:** `ADMIN` (settings, columns, Jira connection), `MEMBER` (cards), `VIEWER` (read-only). Users who are not members get `404`.
-- **Connect Jira (board Admin):** `GET /jira/oauth/start?boardId=` returns an Atlassian authorise URL; Atlassian redirects to the frontend route `/jira/callback?code&state`, which calls `GET /jira/oauth/callback?code&state`. Setting up the Atlassian app and a sandbox site is a separate task (T-14).
+- **Connect Jira (board Admin):** `GET /jira/oauth/start?boardId=` returns an Atlassian authorise URL; Atlassian redirects to the frontend route `/jira/callback?code&state`, which calls `GET /jira/oauth/callback?code&state`. Setting up the Atlassian app, a sandbox site and a webhook tunnel: [`docs/jira-sandbox.md`](docs/jira-sandbox.md).
 
 ## Contributing
 
