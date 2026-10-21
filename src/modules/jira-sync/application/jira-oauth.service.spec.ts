@@ -59,6 +59,11 @@ function setup(role: BoardRole | null = BoardRole.ADMIN) {
         scopes: ['read:jira-work'],
       },
     ]),
+    createIssue: jest.fn(),
+    updateIssue: jest.fn(),
+    getTransitions: jest.fn(),
+    transitionIssue: jest.fn(),
+    addComment: jest.fn(),
   };
   const config = {
     getOrThrow: (key: string) =>
