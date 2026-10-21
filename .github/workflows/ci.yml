@@ -36,6 +36,17 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
+      - name: Validate full-stack compose file
+        # Dummy values only satisfy the ${VAR:?} guards; nothing is started.
+        run: docker compose -f docker-compose.full.yml config --quiet
+        env:
+          DATABASE_PASSWORD: ci
+          JWT_SECRET: ci-jwt-secret-with-at-least-32-characters
+          JIRA_CLIENT_ID: ci
+          JIRA_CLIENT_SECRET: ci
+          TOKEN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          WEBHOOK_SECRET: ci-webhook-secret-with-at-least-32-chars
+
   typecheck:
     name: TypeCheck
     runs-on: ubuntu-latest
