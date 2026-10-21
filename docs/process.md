@@ -14,16 +14,17 @@ How the plan is tracked in Jira and when a ticket counts as done. Code-level rul
 
 ### Workflow
 
-`To Do` → `In Progress` → `In Review` → `Done`
+`To Do` → `In Progress` → `In Review` → `Testing` → `Done`
 
 | Status | Enter when | Leave when |
 | --- | --- | --- |
 | To Do | Ticket is planned in a sprint | Work starts and the `KAN-<n>` branch exists |
 | In Progress | Branch exists, OpenSpec change proposed (if behaviour changes) | PR is opened |
 | In Review | PR into `dev` is open | PR approved by the ticket's Reviewer, CI green, merged |
-| Done | Merged into `dev`, Definition of Done met | — |
+| Testing | Merged into `dev`; the change is checked on the running stack against the acceptance criteria | Acceptance criteria verified |
+| Done | Acceptance criteria verified, Definition of Done met | — |
 
-A ticket goes back to *In Progress* when the review requests changes.
+A ticket goes back to *In Progress* when the review requests changes or a check in *Testing* fails.
 
 ### Sprints
 
