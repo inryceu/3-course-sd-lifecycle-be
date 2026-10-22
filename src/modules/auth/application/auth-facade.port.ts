@@ -13,5 +13,6 @@ export interface AuthFacade {
    * Verifies signature and expiry of an access token and that the user still exists.
    * Returns null instead of throwing for any invalid token (used by the WebSocket handshake).
    */
+  getUserByEmail(email: string): Promise<AuthUser | null>;
   verifyToken(token: string): Promise<AuthUser | null>;
 }
