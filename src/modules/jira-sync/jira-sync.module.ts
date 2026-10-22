@@ -12,11 +12,13 @@ import { JiraIssueMappingEntity } from './infrastructure/persistence/jira-issue-
 import { JiraOAuthStateEntity } from './infrastructure/persistence/jira-oauth-state.entity';
 import { SyncLogEntity } from './infrastructure/persistence/sync-log.entity';
 import { JiraOAuthController } from './presentation/jira-oauth.controller';
+import { BoardsModule } from '../boards';
 
 @Module({
   imports: [
     // jira-sync -> auth (identity). jira-sync -> boards goes through the global BOARDS_FACADE port.
     AuthModule,
+    BoardsModule,
     TypeOrmModule.forFeature([
       JiraConnectionEntity,
       JiraOAuthStateEntity,
