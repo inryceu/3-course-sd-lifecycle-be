@@ -9,6 +9,7 @@ import { BoardMembershipEntity } from './infrastructure/persistence/board-member
  * inject `BOARD_ACCESS` / `BOARDS_FACADE` without importing the boards module (and so without
  * depending on its internals).
  */
+@Global()
 @Module({
   imports: [TypeOrmModule.forFeature([BoardMembershipEntity])],
   providers: [BoardAccessService, { provide: BOARD_ACCESS, useExisting: BoardAccessService }],
