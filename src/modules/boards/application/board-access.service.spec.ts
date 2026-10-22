@@ -17,6 +17,13 @@ describe('BoardAccessService', () => {
     expect(await serviceWithRole(null).getRole('u', 'b')).toBeNull();
   });
 
+  describe('canView', () => {
+    it('returns true for a member and false for a stranger', async () => {
+      expect(await serviceWithRole(BoardRole.VIEWER).canView('u', 'b')).toBe(true);
+      expect(await serviceWithRole(null).canView('u', 'b')).toBe(false);
+    });
+  });
+
   describe('requireMember', () => {
     it.each([BoardRole.ADMIN, BoardRole.MEMBER, BoardRole.VIEWER])('accepts %s', async (role) => {
       expect(await serviceWithRole(role).requireMember('u', 'b')).toBe(role);

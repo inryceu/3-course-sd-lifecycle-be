@@ -5,6 +5,8 @@ import { BoardAccessModule } from './board-access.module';
 import { BoardsService } from './application/boards.service';
 import { CardsService } from './application/cards.service';
 import { ColumnsService } from './application/columns.service';
+import { BoardsFacadeService } from './application/boards-facade.service';
+import { BOARDS_FACADE } from './application/boards-facade.port';
 import { BoardMembershipEntity } from './infrastructure/persistence/board-membership.entity';
 import { BoardEntity } from './infrastructure/persistence/board.entity';
 import { CardEntity } from './infrastructure/persistence/card.entity';
@@ -31,6 +33,13 @@ import { ColumnsController } from './presentation/columns.controller';
     ]),
   ],
   controllers: [BoardsController, ColumnsController, CardsController],
-  providers: [BoardsService, ColumnsService, CardsService],
+  providers: [
+    BoardsService,
+    ColumnsService,
+    CardsService,
+    BoardsFacadeService,
+    { provide: BOARDS_FACADE, useExisting: BoardsFacadeService },
+  ],
+  exports: [BOARDS_FACADE],
 })
 export class BoardsModule {}
