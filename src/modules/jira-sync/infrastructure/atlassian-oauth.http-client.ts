@@ -29,37 +29,29 @@ export class AtlassianOAuthHttpClient implements AtlassianOAuth {
   constructor(private readonly config: ConfigService) {}
 
   async exchangeCode(input: { code: string; codeVerifier: string }): Promise<AtlassianTokens> {
-    const body = {
-      grant_type: 'authorization_code',
-      client_id: this.config.getOrThrow<string>('jira.clientId'),
-      client_secret: this.config.getOrThrow<string>('jira.clientSecret'),
-      code: input.code,
-      redirect_uri: this.config.getOrThrow<string>('jira.redirectUri'),
-      code_verifier: input.codeVerifier,
-    };
-    const response = await this.request(`${this.authBase()}/oauth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const json = (await this.readJson(response)) as TokenResponse;
+    return this.requestTokens(
+      {
+        grant_type: 'authorization_code',
+        client_id: this.config.getOrThrow<string>('jira.clientId'),
+        client_secret: this.config.getOrThrow<string>('jira.clientSecret'),
+        code: input.code,
+        redirect_uri: this.config.getOrThrow<string>('jira.redirectUri'),
+        code_verifier: input.codeVerifier,
+      },
+      'Token exchange',
+    );
+  }
 
-    if (!response.ok) {
-      this.logger.warn(`Token exchange failed: HTTP ${response.status} ${json.error ?? ''}`.trim());
-      if (response.status >= 500) {
-        throw new AtlassianUnavailableError(`HTTP ${response.status}`);
-      }
-      throw new AtlassianRejectedError(json.error ?? 'invalid_request', response.status);
-    }
-    if (!json.access_token || typeof json.expires_in !== 'number') {
-      throw new AtlassianUnavailableError('unexpected token response');
-    }
-    return {
-      accessToken: json.access_token,
-      refreshToken: json.refresh_token ?? null,
-      expiresIn: json.expires_in,
-      scopes: (json.scope ?? '').split(' ').filter((scope) => scope.length > 0),
-    };
+  async refreshAccessToken(refreshToken: string): Promise<AtlassianTokens> {
+    return this.requestTokens(
+      {
+        grant_type: 'refresh_token',
+        client_id: this.config.getOrThrow<string>('jira.clientId'),
+        client_secret: this.config.getOrThrow<string>('jira.clientSecret'),
+        refresh_token: refreshToken,
+      },
+      'Token refresh',
+    );
   }
 
   async listAccessibleResources(accessToken: string): Promise<AccessibleResource[]> {
@@ -88,6 +80,35 @@ export class AtlassianOAuthHttpClient implements AtlassianOAuth {
       }));
   }
 
+  private async requestTokens(
+    body: Record<string, string>,
+    operation: string,
+  ): Promise<AtlassianTokens> {
+    const response = await this.request(`${this.authBase()}/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = (await this.readJson(response)) as TokenResponse;
+
+    if (!response.ok) {
+      this.logger.warn(`${operation} failed: HTTP ${response.status} ${json.error ?? ''}`.trim());
+      if (response.status >= 500) {
+        throw new AtlassianUnavailableError(`HTTP ${response.status}`);
+      }
+      throw new AtlassianRejectedError(json.error ?? 'invalid_request', response.status);
+    }
+    if (!json.access_token || typeof json.expires_in !== 'number') {
+      throw new AtlassianUnavailableError('unexpected token response');
+    }
+    return {
+      accessToken: json.access_token,
+      refreshToken: json.refresh_token ?? null,
+      expiresIn: json.expires_in,
+      scopes: (json.scope ?? '').split(' ').filter((scope) => scope.length > 0),
+    };
+  }
+
   private async request(url: string, init: RequestInit): Promise<Response> {
     try {
       return await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -100,7 +121,8 @@ export class AtlassianOAuthHttpClient implements AtlassianOAuth {
 
   private async readJson(response: Response): Promise<unknown> {
     try {
-      return await response.json();
+      const json: unknown = await response.json();
+      return json;
     } catch {
       return {};
     }

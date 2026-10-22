@@ -22,5 +22,7 @@ export interface AccessibleResource {
 export interface AtlassianOAuth {
   /** Throws `AtlassianRejectedError` (4xx) or `AtlassianUnavailableError` (network, 5xx). */
   exchangeCode(input: { code: string; codeVerifier: string }): Promise<AtlassianTokens>;
+  /** Throws `AtlassianRejectedError` (incl. providerError 'invalid_grant') or `AtlassianUnavailableError`. */
+  refreshAccessToken(refreshToken: string): Promise<AtlassianTokens>;
   listAccessibleResources(accessToken: string): Promise<AccessibleResource[]>;
 }
