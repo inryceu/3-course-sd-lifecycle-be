@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { AuthFacade } from '../../auth';
 import { BoardRole } from '../domain/board-role';
 import { BoardMembershipEntity } from '../infrastructure/persistence/board-membership.entity';
@@ -29,8 +29,24 @@ function setup() {
     verifyToken: jest.fn(),
   } as AuthFacade;
 
-  const service = new MembersService(memberships, access, auth);
-  return { service, memberships, access, auth };
+  const manager = {
+    createQueryBuilder: jest.fn().mockReturnValue({
+      setLock: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue({ id: 'board-id' }),
+    }),
+    findOne: jest.fn((_entity: any, options: any) => memberships.findOne(options)),
+    count: jest.fn((_entity: any, options: any) => memberships.count(options)),
+    save: jest.fn((entity: any) => memberships.save(entity)),
+    remove: jest.fn((entity: any) => memberships.remove(entity)),
+  };
+
+  const dataSource = {
+    transaction: jest.fn(async (cb: (m: any) => Promise<any>) => cb(manager)),
+  } as unknown as DataSource;
+
+  const service = new MembersService(dataSource, memberships, access, auth);
+  return { service, memberships, access, auth, dataSource };
 }
 
 describe('MembersService', () => {
@@ -71,23 +87,29 @@ describe('MembersService', () => {
   describe('updateRole & remove (Last Admin protection)', () => {
     it('allows demoting an admin if there are other admins', async () => {
       const { service, memberships } = setup();
-      memberships.findOne = jest
-        .fn()
-        .mockResolvedValue({ role: BoardRole.ADMIN, userId: 'user-2' });
-      memberships.count = jest.fn().mockResolvedValue(2); // 2 admins exist
+      memberships.findOne = jest.fn().mockResolvedValue({
+        role: BoardRole.ADMIN,
+        userId: 'user-2',
+        boardId: 'board-id',
+        invitedAt: new Date(),
+      });
+      memberships.count = jest.fn().mockResolvedValue(2);
 
       await expect(
         service.updateRole('admin-id', 'board-id', 'user-2', BoardRole.MEMBER),
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ role: BoardRole.MEMBER });
       expect(memberships.save).toHaveBeenCalled();
     });
 
     it('throws Conflict when trying to demote the last admin', async () => {
       const { service, memberships } = setup();
-      memberships.findOne = jest
-        .fn()
-        .mockResolvedValue({ role: BoardRole.ADMIN, userId: 'user-2', boardId: 'board-id' });
-      memberships.count = jest.fn().mockResolvedValue(1); // Only 1 admin
+      memberships.findOne = jest.fn().mockResolvedValue({
+        role: BoardRole.ADMIN,
+        userId: 'user-2',
+        boardId: 'board-id',
+        invitedAt: new Date(),
+      });
+      memberships.count = jest.fn().mockResolvedValue(1);
 
       await expect(
         service.updateRole('admin-id', 'board-id', 'user-2', BoardRole.MEMBER),
@@ -96,9 +118,12 @@ describe('MembersService', () => {
 
     it('throws Conflict when trying to remove the last admin', async () => {
       const { service, memberships } = setup();
-      memberships.findOne = jest
-        .fn()
-        .mockResolvedValue({ role: BoardRole.ADMIN, userId: 'user-2', boardId: 'board-id' });
+      memberships.findOne = jest.fn().mockResolvedValue({
+        role: BoardRole.ADMIN,
+        userId: 'user-2',
+        boardId: 'board-id',
+        invitedAt: new Date(),
+      });
       memberships.count = jest.fn().mockResolvedValue(1);
 
       await expect(service.remove('admin-id', 'board-id', 'user-2')).rejects.toThrow(
