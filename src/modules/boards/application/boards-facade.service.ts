@@ -19,7 +19,9 @@ export class BoardsFacadeService implements BoardsFacade {
     return this.cards.upsertFromExternal(input);
   }
 
-  async moveCardFromExternal(input: ExternalCardMove): Promise<void> {
+  async moveCardFromExternal(
+    input: ExternalCardMove,
+  ): Promise<'moved' | 'unchanged' | 'not-found'> {
     return this.cards.moveFromExternal(input);
   }
 }

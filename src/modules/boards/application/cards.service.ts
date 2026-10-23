@@ -234,6 +234,13 @@ export class CardsService {
         const saved = await manager.save(card);
         return { view: toCardView(saved), isNew: false };
       } else {
+        const targetColumn = await manager.findOne(BoardColumnEntity, {
+          where: { id: columnId, boardId },
+        });
+        if (!targetColumn) {
+          throw new BadRequestException('Column does not belong to this board');
+        }
+
         const count = await manager.count(CardEntity, { where: { columnId } });
         card = manager.create(CardEntity, {
           boardId,
@@ -260,7 +267,7 @@ export class CardsService {
     jiraIssueKey: string;
     columnId: string;
     position: number;
-  }): Promise<void> {
+  }): Promise<'moved' | 'unchanged' | 'not-found'> {
     const { boardId, jiraIssueKey, columnId: targetColumnId, position: targetPosition } = input;
 
     const result = await this.dataSource.transaction(async (manager) => {
@@ -269,12 +276,12 @@ export class CardsService {
         where: { boardId, jiraIssueKey },
         relations: { labels: true },
       });
-      if (!current) return null;
+      if (!current) return 'not-found';
 
       const target = await manager.findOne(BoardColumnEntity, {
         where: { id: targetColumnId, boardId },
       });
-      if (!target) return null;
+      if (!target) return 'not-found';
 
       const from = { columnId: current.columnId, position: current.position };
       const sameColumn = from.columnId === target.id;
@@ -283,14 +290,10 @@ export class CardsService {
       const finalPosition = Math.min(Math.max(0, targetPosition), maxPosition);
 
       if (from.columnId === target.id && from.position === finalPosition) {
-        return null;
+        return 'unchanged';
       }
 
-      try {
-        current.moveTo({ id: target.id, boardId: target.boardId }, finalPosition);
-      } catch {
-        return null;
-      }
+      current.moveTo({ id: target.id, boardId: target.boardId }, finalPosition);
 
       await this.shiftNeighbours(manager, from, { columnId: target.id, position: finalPosition });
       await manager.update(
@@ -306,20 +309,24 @@ export class CardsService {
       return { view: toCardView(moved), fromColumnId: from.columnId };
     });
 
-    if (result) {
-      await this.events.publish(
-        createEvent('card.moved', {
-          boardId,
-          origin: 'jira',
-          payload: {
-            card: toCardSnapshot(result.view),
-            fromColumnId: result.fromColumnId,
-            toColumnId: result.view.columnId,
-            position: result.view.position,
-          },
-        }),
-      );
+    if (result === 'not-found' || result === 'unchanged') {
+      return result;
     }
+
+    await this.events.publish(
+      createEvent('card.moved', {
+        boardId,
+        origin: 'jira',
+        payload: {
+          card: toCardSnapshot(result.view),
+          fromColumnId: result.fromColumnId,
+          toColumnId: result.view.columnId,
+          position: result.view.position,
+        },
+      }),
+    );
+
+    return 'moved';
   }
 
   private async shiftNeighbours(

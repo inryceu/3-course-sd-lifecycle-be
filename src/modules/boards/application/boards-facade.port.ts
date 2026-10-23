@@ -19,6 +19,5 @@ export const BOARDS_FACADE = Symbol('BOARDS_FACADE');
 
 export interface BoardsFacade {
   getMemberRole(boardId: string, userId: string): Promise<BoardRole | null>;
-  upsertCardFromExternal(input: ExternalCardInput): Promise<void>;
-  moveCardFromExternal(input: ExternalCardMove): Promise<void>;
+  moveCardFromExternal(input: ExternalCardMove): Promise<'moved' | 'unchanged' | 'not-found'>;
 }
