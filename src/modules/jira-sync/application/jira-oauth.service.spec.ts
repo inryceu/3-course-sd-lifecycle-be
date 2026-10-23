@@ -51,6 +51,7 @@ function setup(role: BoardRole | null = BoardRole.ADMIN) {
       expiresIn: 3600,
       scopes: ['read:jira-work', 'offline_access'],
     }),
+    refreshAccessToken: jest.fn(),
     listAccessibleResources: jest.fn().mockResolvedValue([
       {
         id: 'cloud-1',
