@@ -15,6 +15,10 @@ export class AuthFacadeService implements AuthFacade {
     return this.auth.getUser(id);
   }
 
+  getUserByEmail(email: string): Promise<AuthUser | null> {
+    return this.auth.getUserByEmail(email);
+  }
+
   async verifyToken(token: string): Promise<AuthUser | null> {
     const claims = this.tokens.verify(token);
     return claims ? this.auth.getUser(claims.sub) : null;
