@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsEnum } from 'class-validator';
+import { IsEmail, IsEnum, IsIn } from 'class-validator';
 import { BoardRole } from '../../domain/board-role';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -11,8 +11,8 @@ export class InviteMemberDto {
   @IsEmail()
   email: string;
 
-  @ApiProperty({ enum: BoardRole, default: BoardRole.MEMBER })
-  @IsEnum(BoardRole)
+  @ApiProperty({ enum: [BoardRole.MEMBER, BoardRole.VIEWER], default: BoardRole.MEMBER })
+  @IsIn([BoardRole.MEMBER, BoardRole.VIEWER])
   role: BoardRole;
 }
 

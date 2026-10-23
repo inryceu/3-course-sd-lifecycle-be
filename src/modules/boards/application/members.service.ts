@@ -5,14 +5,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { AUTH_FACADE, AuthFacade } from '../../auth';
 import { BoardRole } from '../domain/board-role';
 import { BoardMembershipEntity } from '../infrastructure/persistence/board-membership.entity';
+import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { BoardAccessService } from './board-access.service';
 
 export interface MemberView {
+  boardId: string;
   userId: string;
   email: string;
   displayName: string;
@@ -23,6 +25,7 @@ export interface MemberView {
 @Injectable()
 export class MembersService {
   constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(BoardMembershipEntity)
     private readonly memberships: Repository<BoardMembershipEntity>,
     private readonly access: BoardAccessService,
@@ -40,6 +43,7 @@ export class MembersService {
       members.map(async (m) => {
         const user = await this.auth.getUserById(m.userId);
         return {
+          boardId: m.boardId,
           userId: m.userId,
           email: user?.email ?? 'Unknown',
           displayName: user?.displayName ?? 'Unknown',
@@ -77,6 +81,7 @@ export class MembersService {
     );
 
     return {
+      boardId: saved.boardId,
       userId: saved.userId,
       email: targetUser.email,
       displayName: targetUser.displayName,
@@ -90,47 +95,74 @@ export class MembersService {
     boardId: string,
     targetUserId: string,
     role: BoardRole,
-  ): Promise<void> {
+  ): Promise<MemberView> {
     await this.access.requireAdmin(actorId, boardId);
 
-    const membership = await this.memberships.findOne({ where: { boardId, userId: targetUserId } });
-    if (!membership) {
-      throw new NotFoundException('Member not found');
-    }
+    return this.dataSource.transaction(async (manager) => {
+      await manager
+        .createQueryBuilder(BoardEntity, 'b')
+        .setLock('pessimistic_write')
+        .where('b.id = :boardId', { boardId })
+        .getOne();
 
-    if (membership.role === BoardRole.ADMIN && role !== BoardRole.ADMIN) {
-      await this.ensureAnotherAdmin(boardId, targetUserId);
-    }
+      const membership = await manager.findOne(BoardMembershipEntity, {
+        where: { boardId, userId: targetUserId },
+      });
+      if (!membership) {
+        throw new NotFoundException('Member not found');
+      }
 
-    membership.role = role;
-    await this.memberships.save(membership);
+      if (membership.role === BoardRole.ADMIN && role !== BoardRole.ADMIN) {
+        const adminCount = await manager.count(BoardMembershipEntity, {
+          where: { boardId, role: BoardRole.ADMIN },
+        });
+        if (adminCount <= 1) {
+          throw new ConflictException('Cannot remove or demote the last admin of the board');
+        }
+      }
+
+      membership.role = role;
+      const saved = await manager.save(membership);
+
+      const user = await this.auth.getUserById(saved.userId);
+      return {
+        boardId: saved.boardId,
+        userId: saved.userId,
+        email: user?.email ?? 'Unknown',
+        displayName: user?.displayName ?? 'Unknown',
+        role: saved.role,
+        invitedAt: saved.invitedAt.toISOString(),
+      };
+    });
   }
 
   async remove(actorId: string, boardId: string, targetUserId: string): Promise<void> {
     await this.access.requireAdmin(actorId, boardId);
 
-    const membership = await this.memberships.findOne({ where: { boardId, userId: targetUserId } });
-    if (!membership) {
-      throw new NotFoundException('Member not found');
-    }
+    await this.dataSource.transaction(async (manager) => {
+      await manager
+        .createQueryBuilder(BoardEntity, 'b')
+        .setLock('pessimistic_write')
+        .where('b.id = :boardId', { boardId })
+        .getOne();
 
-    if (membership.role === BoardRole.ADMIN) {
-      await this.ensureAnotherAdmin(boardId, targetUserId);
-    }
+      const membership = await manager.findOne(BoardMembershipEntity, {
+        where: { boardId, userId: targetUserId },
+      });
+      if (!membership) {
+        throw new NotFoundException('Member not found');
+      }
 
-    await this.memberships.remove(membership);
-  }
+      if (membership.role === BoardRole.ADMIN) {
+        const adminCount = await manager.count(BoardMembershipEntity, {
+          where: { boardId, role: BoardRole.ADMIN },
+        });
+        if (adminCount <= 1) {
+          throw new ConflictException('Cannot remove or demote the last admin of the board');
+        }
+      }
 
-  private async ensureAnotherAdmin(boardId: string, excludingUserId: string): Promise<void> {
-    const adminCount = await this.memberships.count({
-      where: { boardId, role: BoardRole.ADMIN },
+      await manager.remove(membership);
     });
-
-    const selfIsAdmin = await this.memberships.findOne({
-      where: { boardId, userId: excludingUserId, role: BoardRole.ADMIN },
-    });
-    if (adminCount <= 1 && selfIsAdmin) {
-      throw new ConflictException('Cannot remove or demote the last admin of the board');
-    }
   }
 }

@@ -48,7 +48,6 @@ export class MembersController {
   }
 
   @Patch(':userId')
-  @HttpCode(HttpStatus.NO_CONTENT)
   @BoardRoles(BoardRole.ADMIN)
   @ApiOperation({ summary: "Change a member's role" })
   updateRole(
@@ -56,7 +55,7 @@ export class MembersController {
     @Param('boardId', ParseUUIDPipe) boardId: string,
     @Param('userId', ParseUUIDPipe) targetUserId: string,
     @Body() dto: UpdateMemberRoleDto,
-  ): Promise<void> {
+  ): Promise<MemberView> {
     return this.members.updateRole(currentUserId, boardId, targetUserId, dto.role);
   }
 
