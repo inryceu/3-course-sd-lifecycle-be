@@ -290,11 +290,11 @@ The system SHALL enforce an overall time budget per public gateway call (default
 - **THEN** `JiraClientError` is thrown with `providerError = 'unexpected_status'`
 
 ### Requirement: Required OAuth scopes
-Gateway operations SHALL require `offline_access` (refresh), `read:jira-work` (search, transitions read, comments read), `write:jira-work` (transitions, comments), and `manage:jira-webhook` (webhooks). Jira enforces these scopes; the gateway does not preflight-check them. The T-16 defaults omit `manage:jira-webhook`, so webhook calls surface Jira's 403 as `JiraClientError` until the scope is granted and the board reconnects.
+Gateway operations SHALL require `offline_access` (refresh), `read:jira-work` (search, transitions read, comments read), `write:jira-work` (transitions, comments), and `manage:jira-webhook` (webhooks). Before sending a request, the gateway SHALL check the operation's required scope against the scopes stored on the board's `JiraConnectionEntity` (`scopes`, a string array). If the stored scopes are non-empty and lack the required scope, it SHALL throw `JiraClientError(403, 'missing_scope')` without any HTTP request and without attempting a token refresh. Empty or unknown stored scopes SHALL NOT block the call. Jira reports a missing scope as HTTP 401, not 403; the gateway's early check is what produces the explicit 403. The T-16 defaults omit `manage:jira-webhook`, so webhook calls fail early until the scope is granted and the board reconnects.
 
 #### Scenario: Webhook scope missing
-- **WHEN** a webhook operation is attempted without `manage:jira-webhook`
-- **THEN** Jira returns 403 and the gateway throws `JiraClientError` with status 403
+- **WHEN** a webhook operation is attempted on a connection whose known scopes omit `manage:jira-webhook`
+- **THEN** the gateway throws `JiraClientError(403, 'missing_scope')` before any HTTP request or token refresh
 
 #### Scenario: Refresh scope missing
 - **WHEN** the stored tokens lack `offline_access`

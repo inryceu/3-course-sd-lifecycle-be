@@ -40,6 +40,7 @@ interface FakeConnection {
   accessTokenEnc: string;
   refreshTokenEnc: string | null;
   expiresAt: Date;
+  scopes: string[];
 }
 
 const BOARD = 'board-1';
@@ -95,6 +96,7 @@ function makeConnection(overrides: Partial<FakeConnection> = {}): FakeConnection
     accessTokenEnc: 'enc(access-1)',
     refreshTokenEnc: 'enc(refresh-1)',
     expiresAt: new Date(BASE_NOW + HOUR),
+    scopes: ['read:jira-work', 'write:jira-work', 'manage:jira-webhook', 'offline_access'],
     ...overrides,
   };
 }
@@ -462,6 +464,128 @@ describe('JiraGatewayHttpClient webhooks', () => {
   });
 });
 
+describe('JiraGatewayHttpClient scope preflight', () => {
+  const nearExpiry = new Date(BASE_NOW + 30_000);
+  const withoutManage = ['read:jira-work', 'write:jira-work', 'offline_access'];
+  const withoutWrite = ['read:jira-work', 'manage:jira-webhook', 'offline_access'];
+  const withoutRead = ['write:jira-work', 'manage:jira-webhook', 'offline_access'];
+
+  it('rejects all webhook operations without manage:jira-webhook before HTTP or refresh', async () => {
+    respond = () => ({ status: 200, body: {} });
+    const { client, atlassian } = setup({
+      connection: makeConnection({ scopes: withoutManage, expiresAt: nearExpiry }),
+    });
+
+    const registered = client.registerWebhook({
+      boardId: BOARD,
+      url: 'https://example.test/hook',
+      webhooks: [{ events: ['jira:issue_updated'], jqlFilter: 'project = KAN' }],
+    });
+    await expect(registered).rejects.toBeInstanceOf(JiraClientError);
+    await expect(registered).rejects.toMatchObject({
+      status: 403,
+      providerError: 'missing_scope',
+    });
+
+    const listed = client.listWebhooks({ boardId: BOARD });
+    await expect(listed).rejects.toBeInstanceOf(JiraClientError);
+    await expect(listed).rejects.toMatchObject({ status: 403, providerError: 'missing_scope' });
+
+    const refreshed = client.refreshWebhooks({ boardId: BOARD, webhookIds: [7] });
+    await expect(refreshed).rejects.toBeInstanceOf(JiraClientError);
+    await expect(refreshed).rejects.toMatchObject({ status: 403, providerError: 'missing_scope' });
+
+    expect(requests).toHaveLength(0);
+    expect(atlassian.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('rejects doTransition without write:jira-work before HTTP or refresh', async () => {
+    respond = () => ({ status: 204 });
+    const { client, atlassian } = setup({
+      connection: makeConnection({ scopes: withoutWrite, expiresAt: nearExpiry }),
+    });
+
+    const failure = client.doTransition({
+      boardId: BOARD,
+      issueIdOrKey: 'KAN-1',
+      transitionId: '31',
+    });
+    await expect(failure).rejects.toBeInstanceOf(JiraClientError);
+    await expect(failure).rejects.toMatchObject({ status: 403, providerError: 'missing_scope' });
+
+    expect(requests).toHaveLength(0);
+    expect(atlassian.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('rejects addComment without write:jira-work before HTTP or refresh', async () => {
+    respond = () => ({ status: 201, body: COMMENT });
+    const { client, atlassian } = setup({
+      connection: makeConnection({ scopes: withoutWrite, expiresAt: nearExpiry }),
+    });
+
+    const failure = client.addComment({
+      boardId: BOARD,
+      issueIdOrKey: 'KAN-1',
+      body: plainTextToAdf('hello'),
+    });
+    await expect(failure).rejects.toBeInstanceOf(JiraClientError);
+    await expect(failure).rejects.toMatchObject({ status: 403, providerError: 'missing_scope' });
+
+    expect(requests).toHaveLength(0);
+    expect(atlassian.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('rejects read operations without read:jira-work before HTTP or refresh', async () => {
+    respond = () => ({ status: 200, body: {} });
+    const { client, atlassian } = setup({
+      connection: makeConnection({ scopes: withoutRead, expiresAt: nearExpiry }),
+    });
+
+    const searched = client.searchIssues({ boardId: BOARD, jql: 'project = KAN' });
+    await expect(searched).rejects.toBeInstanceOf(JiraClientError);
+    await expect(searched).rejects.toMatchObject({ status: 403, providerError: 'missing_scope' });
+
+    const listed = client.listTransitions({ boardId: BOARD, issueIdOrKey: 'KAN-1' });
+    await expect(listed).rejects.toBeInstanceOf(JiraClientError);
+    await expect(listed).rejects.toMatchObject({ status: 403, providerError: 'missing_scope' });
+
+    const comments = client.getComments({ boardId: BOARD, issueIdOrKey: 'KAN-1' });
+    await expect(comments).rejects.toBeInstanceOf(JiraClientError);
+    await expect(comments).rejects.toMatchObject({ status: 403, providerError: 'missing_scope' });
+
+    expect(requests).toHaveLength(0);
+    expect(atlassian.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('allows a webhook call when manage:jira-webhook is stored', async () => {
+    respond = () => ({
+      status: 200,
+      body: { values: [], startAt: 0, maxResults: 50, total: 0, isLast: true },
+    });
+    const { client } = setup();
+
+    await expect(client.listWebhooks({ boardId: BOARD })).resolves.toMatchObject({
+      values: [],
+      total: 0,
+      isLast: true,
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].method).toBe('GET');
+    expect(requests[0].url).toContain('/webhook');
+  });
+
+  it('does not block when the stored scopes are empty', async () => {
+    respond = () => ({
+      status: 200,
+      body: { values: [], startAt: 0, maxResults: 50, total: 0, isLast: true },
+    });
+    const { client } = setup({ connection: makeConnection({ scopes: [] }) });
+
+    await expect(client.listWebhooks({ boardId: BOARD })).resolves.toMatchObject({ total: 0 });
+    expect(requests).toHaveLength(1);
+  });
+});
+
 describe('JiraGatewayHttpClient token freshness', () => {
   it('proactively refreshes and persists rotated tokens before the request', async () => {
     respond = () => ({ status: 200, body: { issues: [] } });
@@ -740,6 +864,35 @@ describe('JiraGatewayHttpClient persistence', () => {
     expect(update).toHaveBeenCalledTimes(2);
     expect(state.connection?.accessTokenEnc).toBe('enc(access-2)');
     expect(requests[0].headers.authorization).toBe('Bearer access-2');
+  });
+
+  it('preserves a reconnect during refresh and uses the newer stored token', async () => {
+    respond = () => ({ status: 200, body: { issues: [] } });
+    const { client, state, atlassian, update } = setup({
+      connection: makeConnection({ expiresAt: new Date(BASE_NOW + 30_000) }),
+    });
+    atlassian.refreshAccessToken.mockImplementation(() => {
+      if (state.connection !== null) {
+        state.connection.accessTokenEnc = 'enc(reconnect-access)';
+        state.connection.refreshTokenEnc = 'enc(reconnect-refresh)';
+        state.connection.expiresAt = new Date(BASE_NOW + 2 * HOUR);
+      }
+      return Promise.resolve(NEW_TOKENS);
+    });
+
+    await client.searchIssues({ boardId: BOARD, jql: 'x' });
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith(
+      { boardId: BOARD, refreshTokenEnc: 'enc(refresh-1)' },
+      expect.objectContaining({
+        accessTokenEnc: 'enc(access-2)',
+        refreshTokenEnc: 'enc(refresh-2)',
+      }),
+    );
+    expect(state.connection?.accessTokenEnc).toBe('enc(reconnect-access)');
+    expect(state.connection?.refreshTokenEnc).toBe('enc(reconnect-refresh)');
+    expect(requests[0].headers.authorization).toBe('Bearer reconnect-access');
   });
 
   it('throws JiraPersistenceError after both persistence attempts fail', async () => {

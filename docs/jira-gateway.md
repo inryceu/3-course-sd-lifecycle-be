@@ -145,11 +145,13 @@ The gateway requires:
 
 T-16 defaults are `read:jira-work,write:jira-work,read:jira-user,offline_access`.
 
-**Decision for this change:** do **not** modify `JIRA_SCOPES` or the `.env.*` defaults. The console app already lists `manage:jira-webhook`, but backend webhook calls return 403 until the scope is added to `JIRA_SCOPES` and existing boards reconnect. That is a **T-26 follow-up**; `docs/jira-sandbox.md` already expects it when webhook registration starts. `read:jira-user` is extra but harmless.
+Before each operation the gateway checks the scopes stored on `JiraConnectionEntity.scopes` (a string array). If the stored scopes are non-empty and the required scope is absent, it throws `JiraClientError(403, 'missing_scope')` without a network call or token refresh. Empty or unknown scopes are not blocked. Jira itself reports a missing scope as HTTP 401, not 403.
+
+**Decision for this change:** do **not** modify `JIRA_SCOPES` or the `.env.*` defaults. The console app already lists `manage:jira-webhook`, but backend webhook calls fail early with `JiraClientError(403, 'missing_scope')` until the scope is added to `JIRA_SCOPES` and existing boards reconnect. That is a **T-26 follow-up**; `docs/jira-sandbox.md` already expects it when webhook registration starts. `read:jira-user` is extra but harmless.
 
 ## Operational limitations
 
 - **Single-instance only for refresh.** Single-flight is in-process. Multiple backend instances can refresh the same connection concurrently; Atlassian's refresh-token reuse leeway is not a guarantee. Deploy a single sync instance or ensure only one instance syncs a board.
 - **No runtime response validation.** DTOs are compile-time only; Jira response changes are not validated at runtime.
 - Optional webhook filters (`fieldIdsFilter`, `issuePropertyKeysFilter`) are not exposed yet.
-- Webhook calls will fail with 403 until the T-26 scope change and reconnection.
+- Webhook calls fail early with `JiraClientError(403, 'missing_scope')` until the T-26 scope change and reconnection.

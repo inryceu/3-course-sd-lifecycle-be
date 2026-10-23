@@ -65,6 +65,9 @@ const JIRA_GATEWAY_TIME_BUDGET_MS = 45_000;
 const REFRESH_WINDOW_MS = 60_000;
 const MAX_RETRY_AFTER_SECONDS = 60;
 const CONNECTION_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']);
+const SCOPE_READ = 'read:jira-work';
+const SCOPE_WRITE = 'write:jira-work';
+const SCOPE_MANAGE_WEBHOOK = 'manage:jira-webhook';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT';
 type RefreshReason = 'proactive' | 'unauthorized';
@@ -72,6 +75,7 @@ type RefreshReason = 'proactive' | 'unauthorized';
 interface RequestSpec {
   readonly method: HttpMethod;
   readonly path: string;
+  readonly scope: string;
   readonly body?: unknown;
   readonly idempotent: boolean;
 }
@@ -133,6 +137,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
     const result = await this.requestJson<SearchIssuesResponse>(input.boardId, {
       method: 'GET',
       path: `/search/jql?${query.toString()}`,
+      scope: SCOPE_READ,
       idempotent: true,
     });
     return {
@@ -158,6 +163,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
     const result = await this.requestJson<ListTransitionsResponse>(input.boardId, {
       method: 'GET',
       path: `${this.issuePath(input.issueIdOrKey)}/transitions${suffix ? `?${suffix}` : ''}`,
+      scope: SCOPE_READ,
       idempotent: true,
     });
     return { transitions: result.transitions ?? [] };
@@ -175,6 +181,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
     await this.requestNoContent(input.boardId, {
       method: 'POST',
       path: `${this.issuePath(input.issueIdOrKey)}/transitions`,
+      scope: SCOPE_WRITE,
       body,
       idempotent: false,
     });
@@ -199,6 +206,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
     const result = await this.requestJson<GetCommentsResponse>(input.boardId, {
       method: 'GET',
       path: `${this.issuePath(input.issueIdOrKey)}/comment${suffix ? `?${suffix}` : ''}`,
+      scope: SCOPE_READ,
       idempotent: true,
     });
     return {
@@ -213,6 +221,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
     return this.requestJson<AddCommentResult>(input.boardId, {
       method: 'POST',
       path: `${this.issuePath(input.issueIdOrKey)}/comment`,
+      scope: SCOPE_WRITE,
       body: { body: input.body },
       idempotent: false,
     });
@@ -222,6 +231,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
     return this.requestJson<RegisterWebhookResult>(input.boardId, {
       method: 'POST',
       path: '/webhook',
+      scope: SCOPE_MANAGE_WEBHOOK,
       body: { url: input.url, webhooks: input.webhooks },
       idempotent: false,
     });
@@ -240,6 +250,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
     const result = await this.requestJson<ListWebhooksResponse>(input.boardId, {
       method: 'GET',
       path: `/webhook${suffix ? `?${suffix}` : ''}`,
+      scope: SCOPE_MANAGE_WEBHOOK,
       idempotent: true,
     });
     return {
@@ -255,6 +266,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
     return this.requestJson<RefreshWebhooksResult>(input.boardId, {
       method: 'PUT',
       path: '/webhook/refresh',
+      scope: SCOPE_MANAGE_WEBHOOK,
       body: { webhookIds: input.webhookIds },
       idempotent: true,
     });
@@ -263,7 +275,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
   private async requestJson<T>(boardId: string, spec: RequestSpec): Promise<T> {
     const deadline = this.now() + this.timeBudgetMs;
     this.assertBudget(deadline, 0);
-    const access = await this.ensureFreshAccessToken(boardId);
+    const access = await this.ensureFreshAccessToken(boardId, spec.scope);
     const response = await this.execute(
       boardId,
       access.cloudId,
@@ -285,7 +297,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
   private async requestNoContent(boardId: string, spec: RequestSpec): Promise<void> {
     const deadline = this.now() + this.timeBudgetMs;
     this.assertBudget(deadline, 0);
-    const access = await this.ensureFreshAccessToken(boardId);
+    const access = await this.ensureFreshAccessToken(boardId, spec.scope);
     const response = await this.execute(
       boardId,
       access.cloudId,
@@ -419,11 +431,13 @@ export class JiraGatewayHttpClient implements JiraGateway {
 
   private async ensureFreshAccessToken(
     boardId: string,
+    requiredScope: string,
   ): Promise<{ accessToken: string; cloudId: string }> {
     const connection = await this.loadConnection(boardId);
     if (connection === null) {
       throw new JiraUnauthorizedError('connection not found');
     }
+    this.assertScope(connection, requiredScope);
     const accessToken = this.cipher.decrypt(connection.accessTokenEnc);
     const remaining = connection.expiresAt.getTime() - this.now();
 
@@ -486,13 +500,12 @@ export class JiraGatewayHttpClient implements JiraGateway {
       throw await this.refreshFailure(error, boardId, previousRefreshTokenEnc);
     }
 
-    await this.persistTokens(boardId, {
+    return this.persistTokens(boardId, {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       previousRefreshTokenEnc,
       expiresAt: new Date(this.now() + tokens.expiresIn * 1000),
     });
-    return tokens.accessToken;
   }
 
   private async refreshFailure(
@@ -542,7 +555,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
       previousRefreshTokenEnc: string;
       expiresAt: Date;
     },
-  ): Promise<void> {
+  ): Promise<string> {
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
         const accessTokenEnc = this.cipher.encrypt(values.accessToken);
@@ -550,14 +563,21 @@ export class JiraGatewayHttpClient implements JiraGateway {
           values.refreshToken === null
             ? values.previousRefreshTokenEnc
             : this.cipher.encrypt(values.refreshToken);
-        await this.connections.update(
-          { boardId },
+        const result = await this.connections.update(
+          { boardId, refreshTokenEnc: values.previousRefreshTokenEnc },
           { accessTokenEnc, refreshTokenEnc, expiresAt: values.expiresAt },
         );
-        return;
+        if ((result?.affected ?? 0) > 0) {
+          return values.accessToken;
+        }
       } catch {
         this.logger.error(`Failed to persist refreshed Jira tokens (attempt ${attempt}/2)`);
+        continue;
       }
+      this.logger.warn(
+        'Refreshed Jira tokens were not persisted because the connection changed; using stored credentials',
+      );
+      return this.readStoredAccessToken(boardId);
     }
     throw new JiraPersistenceError(2, 2);
   }
@@ -571,8 +591,19 @@ export class JiraGatewayHttpClient implements JiraGateway {
         accessTokenEnc: true,
         refreshTokenEnc: true,
         expiresAt: true,
+        scopes: true,
       },
     });
+  }
+
+  private assertScope(connection: JiraConnectionEntity, requiredScope: string): void {
+    const scopes = connection.scopes;
+    if (!Array.isArray(scopes) || scopes.length === 0) {
+      return;
+    }
+    if (!scopes.includes(requiredScope)) {
+      throw new JiraClientError(403, 'missing_scope');
+    }
   }
 
   private async readStoredAccessToken(boardId: string): Promise<string> {
