@@ -9,7 +9,11 @@ function setup(role: BoardRole | null, connection: Partial<JiraConnectionEntity>
     findOne: jest.fn().mockResolvedValue(connection),
     delete: jest.fn().mockResolvedValue({ affected: 1 }),
   };
-  const boards = { getMemberRole: jest.fn().mockResolvedValue(role) };
+  const boards = {
+    getMemberRole: jest.fn().mockResolvedValue(role),
+    upsertCardFromExternal: jest.fn(),
+    moveCardFromExternal: jest.fn(),
+  };
   const service = new JiraConnectionService(
     connections as unknown as Repository<JiraConnectionEntity>,
     boards,

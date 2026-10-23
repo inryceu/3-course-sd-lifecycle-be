@@ -43,7 +43,11 @@ function setup(role: BoardRole | null = BoardRole.ADMIN) {
     }),
   };
   const connections = { upsert: jest.fn().mockResolvedValue(undefined) };
-  const boards = { getMemberRole: jest.fn().mockResolvedValue(role) };
+  const boards = {
+    getMemberRole: jest.fn().mockResolvedValue(role),
+    upsertCardFromExternal: jest.fn(),
+    moveCardFromExternal: jest.fn(),
+  };
   const atlassian: jest.Mocked<AtlassianOAuth> = {
     exchangeCode: jest.fn().mockResolvedValue({
       accessToken: 'access-1',

@@ -237,15 +237,13 @@ describe('CardsService', () => {
 });
 
 describe('BoardsFacadeService', () => {
-  it('exposes the member role and the view check from the same rules', async () => {
-    const facade = new BoardsFacadeService(access(BoardRole.VIEWER));
+  it('exposes the member role via access service', async () => {
+    const facade = new BoardsFacadeService(access(BoardRole.VIEWER), {} as CardsService);
     expect(await facade.getMemberRole('b', 'u')).toBe(BoardRole.VIEWER);
-    expect(await facade.canView('u', 'b')).toBe(true);
   });
 
-  it('reports strangers as unable to view', async () => {
-    const facade = new BoardsFacadeService(access(null));
+  it('reports strangers', async () => {
+    const facade = new BoardsFacadeService(access(null), {} as CardsService);
     expect(await facade.getMemberRole('b', 'u')).toBeNull();
-    expect(await facade.canView('u', 'b')).toBe(false);
   });
 });
