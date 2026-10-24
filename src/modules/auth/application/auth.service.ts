@@ -74,6 +74,11 @@ export class AuthService {
     return user ? toAuthUser(user) : null;
   }
 
+  async getUserByEmail(email: string): Promise<AuthUser | null> {
+    const user = await this.users.findOne({ where: { email: normalizeEmail(email) } });
+    return user ? toAuthUser(user) : null;
+  }
+
   private result(user: AuthUser): AuthResult {
     return { ...this.tokens.issue(user), user };
   }

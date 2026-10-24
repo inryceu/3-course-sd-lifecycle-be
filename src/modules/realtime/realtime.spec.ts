@@ -25,6 +25,7 @@ const card = {
 function gateway(options: { user?: { id: string } | null; canView?: boolean } = {}) {
   const auth: AuthFacade = {
     getUserById: jest.fn(),
+    getUserByEmail: jest.fn(),
     verifyToken: jest.fn().mockResolvedValue('user' in options ? options.user : { id: 'u1' }),
   };
   const boardAccess = { canView: jest.fn().mockResolvedValue(options.canView ?? true) };
