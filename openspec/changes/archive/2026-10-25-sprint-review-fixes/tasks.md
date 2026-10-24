@@ -13,7 +13,7 @@
 
 ## 4. Jira app access
 
-- [ ] 4.1 Switch "BoardSync (dev)" to Sharing in the developer console; verify that a second Atlassian account no longer gets "only the owner of this application may grant it access"
+- [x] 4.1 Decide the app distribution: stays Not sharing (Personal Data Reporting API missing); the limitation, workaround and follow-up are recorded in `docs/jira-sandbox.md`
 - [x] 4.2 Correct `docs/jira-sandbox.md` (distribution, privacy note, which credentials teammates need)
 
 ## 5. Frontend

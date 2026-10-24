@@ -23,12 +23,12 @@ Everything a developer needs to run the Jira integration against a real Jira Clo
 
    If the console accepts only one callback URL, register the one you use and change it when you switch.
 4. **Settings** → copy the **Client ID** and **Secret**.
-5. **Distribution** must be set to **Sharing** (Distribution → Edit). While an app is *Not sharing* ("in development"), **only the Atlassian account that owns the app** can authorise it; everyone else gets *"You don't have access to this app. This application is in development - only the owner of this application may grant it access to their account."*, even site admins. Sharing asks for:
+5. **Distribution** stays **Not sharing** for now (see *Known limitation* below). While an app is *Not sharing* ("in development"), **only the Atlassian account that owns the app** can authorise it; everyone else gets *"You don't have access to this app. This application is in development - only the owner of this application may grant it access to their account."*, even site admins. Switching to Sharing (Distribution → Edit) asks for:
    - a vendor name: `BoardSync team`;
    - a privacy policy URL: the [Privacy](#privacy) section of this document;
    - a personal data declaration: **yes**. The app stores the issue content of the linked project (summary, description, status), which can contain personal data, and encrypted OAuth tokens. It does not store Atlassian account ids yet; update the declaration when assignee sync arrives.
 
-**Team app (created 2026-10-21):** `BoardSync (dev)` in Pavlo's developer console, access type *Resource-level* (the user picks one site at consent), classic scopes `read:jira-work`, `write:jira-work`, `read:jira-user`, `manage:jira-webhook`, callback URLs `http://localhost:8090/jira/callback` (full stack with `WEB_PORT=8090`) and `http://localhost:5173/jira/callback` (`pnpm dev`). Distribution is **Sharing** since 2026-10-25, so every team member can connect their own boards. Ask Pavlo for the Client ID and Secret (section 3). Using another `WEB_PORT` means adding its callback URL in the console first.
+**Team app (created 2026-10-21):** `BoardSync (dev)` in Pavlo's developer console, access type *Resource-level* (the user picks one site at consent), classic scopes `read:jira-work`, `write:jira-work`, `read:jira-user`, `manage:jira-webhook`, callback URLs `http://localhost:8090/jira/callback` (full stack with `WEB_PORT=8090`) and `http://localhost:5173/jira/callback` (`pnpm dev`). Distribution is **Not sharing**: only Pavlo's Atlassian account can approve the connect screen (see *Known limitation*). Ask Pavlo for the Client ID and Secret (section 3). Using another `WEB_PORT` means adding its callback URL in the console first.
 
 The backend requests `JIRA_SCOPES` (default `read:jira-work,write:jira-work,read:jira-user,offline_access`). Add `manage:jira-webhook` to `JIRA_SCOPES` when T-26 starts registering webhooks; it is a valid classic 3LO scope (the archived `jira-connection` design note that called it invalid is wrong). Every scope in `JIRA_SCOPES` must also be configured in the console, otherwise Atlassian rejects the authorise request.
 
@@ -88,9 +88,21 @@ Later (T-26) the backend registers its own webhook through the REST API with the
 - [ ] Sandbox site and project `SBX` with To Do / In Progress / In Review / Done and sample issues
 - [x] OAuth 2.0 (3LO) app with the scopes above and the local callback URL(s)
 - [ ] Client ID and Secret shared through the password manager, present in everyone's `.env.local`
-- [x] App distribution set to Sharing, so teammates can authorise it
+- [ ] App distribution set to Sharing (blocked, see *Known limitation*)
 - [ ] Connect flow (section 4) succeeds against the sandbox
 - [ ] A webhook reaches a laptop through the tunnel (section 5)
+
+## Known limitation: only the app owner can connect Jira
+
+Decided 2026-10-25. "BoardSync (dev)" stays **Not sharing**, so the Atlassian consent screen accepts **only the app owner's account (Pavlo)**. Anyone else gets *"This application is in development - only the owner of this application may grant it access"*.
+
+Why: Atlassian allows Sharing only with a personal data declaration. Because BoardSync keeps imported issue content longer than 24 hours, the honest answer is "Yes", and "Yes" requires the **Personal Data Reporting API** (Atlassian polls the app about stored account data and the app must erase closed accounts). BoardSync does not implement it yet.
+
+How the team works meanwhile:
+- To connect a board to Jira, add Pavlo to the board as **Admin** (Members panel), and Pavlo presses **Connect Jira** on the Jira Sync page. The connection then belongs to the board, so every member uses the import and, later, sync.
+- The stored tokens act as Pavlo's Jira account, so imported changes and future write-backs (T-25) appear in Jira under his name.
+
+To lift it, implement the Personal Data Reporting API (backlog ticket), then switch Distribution to Sharing with the answers listed in section 2.
 
 ## Privacy
 

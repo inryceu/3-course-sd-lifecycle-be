@@ -5,14 +5,14 @@ The sources are the review comments on #47, #48 and #50. They were re-checked on
 ## Decisions
 
 1. **Duplicate invite → 409:** the `save` in `MembersService.invite` catches a `QueryFailedError` with Postgres code `23505` (unique violation on `UQ_board_memberships_board_user`) and throws `ConflictException('User is already a member of this board')`. The existing pre-check stays as the fast path; the index stays the guarantee.
-2. **Jira app distribution:** in the Atlassian developer console, "BoardSync (dev)" → Distribution → Sharing:
-   - vendor "BoardSync team";
-   - the privacy policy URL points at the repository's `docs/jira-sandbox.md#privacy`;
-   - personal data declaration: yes, the app stores Atlassian account ids and issue data of the connected project.
+2. **Jira app distribution stays Not sharing (decided 2026-10-25).** Sharing requires a personal data declaration. Because BoardSync caches issue content longer than 24 hours, the answer is "Yes", and "Yes" requires confirming the Atlassian Personal Data Reporting API, which is not implemented. Until then:
+   - only the app owner's account can authorise;
+   - teammates add the owner as board Admin to connect a board;
+   - a backlog ticket covers the API.
 
-   No code or environment variable changes, because the client id and secret stay the same.
+   `docs/jira-sandbox.md` documents this.
 3. **Removed member and live events:** not fixed here. The realtime gateway checks access only on `board:join`. The fix (make a removed user's sockets leave the board room) belongs to T-27; it is recorded in the spec's known limitations and as a Jira follow-up.
 
 ## Risks / Trade-offs
 
-- A shared app can be authorised by anyone who has the authorise URL, but our backend only starts the flow for a board Admin and stores tokens per board, so nothing new is exposed.
+- Every Jira connection depends on the owner's account. If that account loses access to the site, every board must be reconnected, and Jira shows all BoardSync changes under the owner's name. This is accepted until the Personal Data Reporting API exists.
