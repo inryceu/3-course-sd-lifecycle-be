@@ -31,6 +31,20 @@ export interface MoveCardInput {
   position: number;
 }
 
+export interface ExternalCardUpsert {
+  boardId: string;
+  columnId: string;
+  jiraIssueKey: string;
+  title: string;
+  /** `undefined` keeps the stored description. */
+  description?: string | null;
+}
+
+export interface ExternalUpsertResult {
+  cardId: string;
+  outcome: 'created' | 'updated' | 'unchanged';
+}
+
 @Injectable()
 export class CardsService {
   constructor(
@@ -58,7 +72,6 @@ export class CardsService {
     return toCardView(card);
   }
 
-  /** Appends a card at the end of the column; the board is derived from the column. */
   async create(userId: string, columnId: string, input: CreateCardInput): Promise<CardView> {
     const column = await this.findColumn(columnId);
     const { boardId } = column;
@@ -91,6 +104,7 @@ export class CardsService {
       createEvent('card.created', {
         boardId,
         actorId: userId,
+        origin: 'user',
         payload: toCardSnapshot(view),
       }),
     );
@@ -113,16 +127,13 @@ export class CardsService {
       createEvent('card.updated', {
         boardId: card.boardId,
         actorId: userId,
+        origin: 'user',
         payload: toCardSnapshot(view),
       }),
     );
     return view;
   }
 
-  /**
-   * Moves a card to a column of the same board. Positions of the source and target column stay
-   * 0..n-1; the whole change is one transaction serialised per board.
-   */
   async move(userId: string, cardId: string, input: MoveCardInput): Promise<CardView> {
     const card = await this.findCard(cardId);
     const { boardId } = card;
@@ -173,6 +184,7 @@ export class CardsService {
       createEvent('card.moved', {
         boardId,
         actorId: userId,
+        origin: 'user',
         payload: {
           card: toCardSnapshot(view),
           fromColumnId,
@@ -208,12 +220,187 @@ export class CardsService {
       createEvent('board.updated', {
         boardId: card.boardId,
         actorId: userId,
+        origin: 'user',
         payload: { board: await this.boardSnapshot(card.boardId) },
       }),
     );
   }
 
-  /** Closes the gap at `from` and opens one at `to`, without touching the moved card itself. */
+  /**
+   * Sets or clears the assignee. The assignee must be a member of the card's board; Viewers may
+   * not change cards.
+   */
+  async assign(userId: string, cardId: string, assigneeId: string | null): Promise<CardView> {
+    const card = await this.findCard(cardId);
+    await this.access.requireEditor(userId, card.boardId);
+    if (assigneeId !== null) {
+      await this.assertMember(card.boardId, assigneeId);
+    }
+    card.assigneeId = assigneeId;
+    const view = toCardView(await this.cards.save(card));
+    await this.events.publish(
+      createEvent('card.updated', {
+        boardId: card.boardId,
+        actorId: userId,
+        origin: 'user',
+        payload: toCardSnapshot(view),
+      }),
+    );
+    return view;
+  }
+
+  /**
+   * Creates or updates the card of a Jira issue, matched by `jiraIssueKey`, and puts it in
+   * `columnId` (appended at the end when it has to move). One transaction serialised per board.
+   */
+  async upsertFromExternal(input: ExternalCardUpsert): Promise<ExternalUpsertResult> {
+    const { boardId, jiraIssueKey, columnId, title, description } = input;
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      await this.lockBoard(manager, boardId);
+      const target = await manager.findOne(BoardColumnEntity, { where: { id: columnId, boardId } });
+      if (!target) {
+        throw new BadRequestException('Column does not belong to this board');
+      }
+      const card = await manager.findOne(CardEntity, {
+        where: { boardId, jiraIssueKey },
+        relations: { labels: true },
+      });
+
+      if (!card) {
+        const count = await manager.count(CardEntity, { where: { columnId } });
+        const saved = await manager.save(
+          manager.create(CardEntity, {
+            boardId,
+            columnId,
+            title,
+            description: description ?? null,
+            jiraIssueKey,
+            position: count,
+            labels: [],
+          }),
+        );
+        return { view: toCardView(saved), outcome: 'created' as const, fromColumnId: null };
+      }
+
+      const newDescription = description === undefined ? card.description : description;
+      const textChanged = card.title !== title || card.description !== newDescription;
+      const fromColumnId = card.columnId;
+      if (!textChanged && fromColumnId === columnId) {
+        return { view: toCardView(card), outcome: 'unchanged' as const, fromColumnId: null };
+      }
+      if (textChanged) {
+        await manager.update(CardEntity, { id: card.id }, { title, description: newDescription });
+      }
+      if (fromColumnId !== columnId) {
+        const count = await manager.count(CardEntity, { where: { columnId } });
+        const from = { columnId: fromColumnId, position: card.position };
+        card.moveTo({ id: target.id, boardId: target.boardId }, count);
+        await this.shiftNeighbours(manager, from, { columnId, position: count });
+        await manager.update(CardEntity, { id: card.id }, { columnId, position: count });
+      }
+      const saved = await manager.findOneOrFail(CardEntity, {
+        where: { id: card.id },
+        relations: { labels: true },
+      });
+      return {
+        view: toCardView(saved),
+        outcome: 'updated' as const,
+        fromColumnId: fromColumnId !== columnId ? fromColumnId : null,
+      };
+    });
+
+    const { view, outcome, fromColumnId } = result;
+    if (outcome === 'created') {
+      await this.events.publish(
+        createEvent('card.created', { boardId, origin: 'jira', payload: toCardSnapshot(view) }),
+      );
+    } else if (outcome === 'updated') {
+      await this.events.publish(
+        fromColumnId
+          ? createEvent('card.moved', {
+              boardId,
+              origin: 'jira',
+              payload: {
+                card: toCardSnapshot(view),
+                fromColumnId,
+                toColumnId: view.columnId,
+                position: view.position,
+              },
+            })
+          : createEvent('card.updated', { boardId, origin: 'jira', payload: toCardSnapshot(view) }),
+      );
+    }
+    return { cardId: view.id, outcome };
+  }
+
+  async moveFromExternal(input: {
+    boardId: string;
+    jiraIssueKey: string;
+    columnId: string;
+    position: number;
+  }): Promise<'moved' | 'unchanged' | 'not-found'> {
+    const { boardId, jiraIssueKey, columnId: targetColumnId, position: targetPosition } = input;
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      await this.lockBoard(manager, boardId);
+      const current = await manager.findOne(CardEntity, {
+        where: { boardId, jiraIssueKey },
+        relations: { labels: true },
+      });
+      if (!current) return 'not-found';
+
+      const target = await manager.findOne(BoardColumnEntity, {
+        where: { id: targetColumnId, boardId },
+      });
+      if (!target) return 'not-found';
+
+      const from = { columnId: current.columnId, position: current.position };
+      const sameColumn = from.columnId === target.id;
+      const count = await manager.count(CardEntity, { where: { columnId: target.id } });
+      const maxPosition = sameColumn ? count - 1 : count;
+      const finalPosition = Math.min(Math.max(0, targetPosition), maxPosition);
+
+      if (from.columnId === target.id && from.position === finalPosition) {
+        return 'unchanged';
+      }
+
+      current.moveTo({ id: target.id, boardId: target.boardId }, finalPosition);
+
+      await this.shiftNeighbours(manager, from, { columnId: target.id, position: finalPosition });
+      await manager.update(
+        CardEntity,
+        { id: current.id },
+        { columnId: current.columnId, position: current.position },
+      );
+
+      const moved = await manager.findOneOrFail(CardEntity, {
+        where: { id: current.id },
+        relations: { labels: true },
+      });
+      return { view: toCardView(moved), fromColumnId: from.columnId };
+    });
+
+    if (result === 'not-found' || result === 'unchanged') {
+      return result;
+    }
+
+    await this.events.publish(
+      createEvent('card.moved', {
+        boardId,
+        origin: 'jira',
+        payload: {
+          card: toCardSnapshot(result.view),
+          fromColumnId: result.fromColumnId,
+          toColumnId: result.view.columnId,
+          position: result.view.position,
+        },
+      }),
+    );
+
+    return 'moved';
+  }
+
   private async shiftNeighbours(
     manager: EntityManager,
     from: { columnId: string; position: number },

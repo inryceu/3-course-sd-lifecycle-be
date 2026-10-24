@@ -141,6 +141,82 @@ describe('AtlassianOAuthHttpClient.exchangeCode', () => {
   });
 });
 
+describe('AtlassianOAuthHttpClient.refreshAccessToken', () => {
+  it('posts the refresh-token grant and maps the rotated tokens', async () => {
+    respond = () => ({
+      status: 200,
+      body: {
+        access_token: 'new-access',
+        refresh_token: 'new-refresh',
+        expires_in: 3600,
+        scope: 'read:jira-work offline_access',
+      },
+    });
+
+    const tokens = await client().refreshAccessToken('old-refresh');
+
+    expect(tokens).toEqual({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+      expiresIn: 3600,
+      scopes: ['read:jira-work', 'offline_access'],
+    });
+    expect(requests[0].method).toBe('POST');
+    expect(requests[0].url).toBe('/oauth/token');
+    expect(JSON.parse(requests[0].body)).toEqual({
+      grant_type: 'refresh_token',
+      client_id: 'client-id',
+      client_secret: 'client-secret',
+      refresh_token: 'old-refresh',
+    });
+  });
+
+  it('maps an omitted rotated refresh token to null', async () => {
+    respond = () => ({ status: 200, body: { access_token: 'a', expires_in: 60 } });
+    const tokens = await client().refreshAccessToken('old');
+    expect(tokens.refreshToken).toBeNull();
+  });
+
+  it('reports invalid_grant as AtlassianRejectedError', async () => {
+    respond = () => ({ status: 403, body: { error: 'invalid_grant' } });
+    const failure = client().refreshAccessToken('old');
+    await expect(failure).rejects.toBeInstanceOf(AtlassianRejectedError);
+    await expect(failure).rejects.toMatchObject({ providerError: 'invalid_grant', status: 403 });
+  });
+
+  it('reports a provider outage and an unreachable provider as AtlassianUnavailableError', async () => {
+    respond = () => ({ status: 503, body: {} });
+    await expect(client().refreshAccessToken('old')).rejects.toBeInstanceOf(
+      AtlassianUnavailableError,
+    );
+
+    const unreachable = client({ 'jira.authBaseUrl': 'http://127.0.0.1:1' });
+    await expect(unreachable.refreshAccessToken('old')).rejects.toBeInstanceOf(
+      AtlassianUnavailableError,
+    );
+  });
+
+  it('rejects a success response without an access token', async () => {
+    respond = () => ({ status: 200, body: {} });
+    await expect(client().refreshAccessToken('old')).rejects.toBeInstanceOf(
+      AtlassianUnavailableError,
+    );
+  });
+
+  it('never logs the refresh token or rotated tokens', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    respond = () => ({ status: 403, body: { error: 'invalid_grant' } });
+
+    await client()
+      .refreshAccessToken('secret-refresh')
+      .catch(() => undefined);
+
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).toContain('invalid_grant');
+    expect(logged).not.toContain('secret-refresh');
+  });
+});
+
 describe('AtlassianOAuthHttpClient.listAccessibleResources', () => {
   it('sends the bearer token and maps the sites', async () => {
     respond = () => ({

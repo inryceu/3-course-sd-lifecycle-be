@@ -9,12 +9,13 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../auth';
 import { CardsService } from '../application/cards.service';
 import { CardView } from '../application/views';
-import { CreateCardDto, MoveCardDto, UpdateCardDto } from './dto/card.dto';
+import { AssignCardDto, CreateCardDto, MoveCardDto, UpdateCardDto } from './dto/card.dto';
 
 @ApiTags('cards')
 @ApiBearerAuth()
@@ -68,6 +69,18 @@ export class CardsController {
     @Body() dto: MoveCardDto,
   ): Promise<CardView> {
     return this.cards.move(userId, cardId, dto);
+  }
+
+  @Put('cards/:cardId/assignee')
+  @ApiOperation({
+    summary: 'Assign a board member to the card, or clear with null (Member, Admin)',
+  })
+  assign(
+    @CurrentUser('id') userId: string,
+    @Param('cardId', ParseUUIDPipe) cardId: string,
+    @Body() dto: AssignCardDto,
+  ): Promise<CardView> {
+    return this.cards.assign(userId, cardId, dto.assigneeId);
   }
 
   @Delete('cards/:cardId')
