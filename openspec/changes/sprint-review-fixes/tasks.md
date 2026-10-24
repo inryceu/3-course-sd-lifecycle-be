@@ -15,3 +15,8 @@
 
 - [ ] 4.1 Switch "BoardSync (dev)" to Sharing in the developer console; verify that a second Atlassian account no longer gets "only the owner of this application may grant it access"
 - [ ] 4.2 Correct `docs/jira-sandbox.md` (distribution, privacy note, which credentials teammates need)
+
+## 5. Frontend
+
+- [ ] 5.1 Members panel on the board page (list; Admin invite / role / remove; errors shown); verify component tests
+- [ ] 5.2 Assignee select in the card dialog (members, clear; read-only for Viewers); verify component tests

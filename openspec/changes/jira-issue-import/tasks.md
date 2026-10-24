@@ -17,7 +17,11 @@
 - [ ] 4.3 `JiraImportService` (project link, paging, idempotent upsert, card ↔ issue links, result counts, error mapping); verify unit tests with a stubbed gateway
 - [ ] 4.4 Controller endpoints `POST /jira/import`, `GET|PUT /jira/status-mappings`, `GET /jira/mappings`; verify a component test (real Postgres, stubbed gateway) for first import, re-import, paging, roles and errors
 
-## 5. Verification
+## 5. Frontend
 
-- [ ] 5.1 `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`, `pnpm build`, `openspec validate --strict`
-- [ ] 5.2 Live import against the team's Jira site through the running stack
+- [ ] 5.1 Jira Sync page: project key, Import with result counts, status mapping (Admin edit, others read-only); verify component tests
+
+## 6. Verification
+
+- [ ] 6.1 `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`, `pnpm build`, `openspec validate --strict`
+- [ ] 6.2 Live import against the team's Jira site through the running stack

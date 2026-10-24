@@ -34,6 +34,7 @@ FR-05 (T-24, KAN-35): a board Admin must be able to link a board to a Jira proje
 
 - `jira-gateway`: adds the `listProjectStatuses` operation.
 - `api-contract`: the import result gains `created` and `updated`; the status-mapping endpoints are added.
+- `web-client`: the Jira Sync page offers the import and the status mapping.
 
 ## Impact
 

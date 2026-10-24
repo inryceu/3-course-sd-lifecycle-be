@@ -23,6 +23,7 @@ The reviews of KAN-29 (#47), KAN-30 (#48) and KAN-34 (#50) left defects that are
 ### Modified Capabilities
 
 - `boards-columns`: adds assigning a card.
+- `web-client`: members panel and card assignment in the UI.
 
 ## Impact
 
