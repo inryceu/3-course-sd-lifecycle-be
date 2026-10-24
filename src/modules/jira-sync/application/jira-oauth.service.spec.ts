@@ -45,6 +45,8 @@ function setup(role: BoardRole | null = BoardRole.ADMIN) {
   const connections = { upsert: jest.fn().mockResolvedValue(undefined) };
   const boards = {
     getMemberRole: jest.fn().mockResolvedValue(role),
+    getBoardSummary: jest.fn(),
+    setJiraProjectKey: jest.fn(),
     upsertCardFromExternal: jest.fn(),
     moveCardFromExternal: jest.fn(),
   };

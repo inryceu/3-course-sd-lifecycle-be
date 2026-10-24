@@ -471,7 +471,6 @@ paths:
       tags: [cards]
       operationId: assignCard
       summary: Assign a board member to the card, or clear the assignee with null
-      x-implemented-in: T-19
       requestBody:
         required: true
         content:
@@ -693,7 +692,6 @@ paths:
       tags: [members]
       operationId: listMembers
       summary: Members and their roles
-      x-implemented-in: T-18
       responses:
         '200':
           description: Members
@@ -711,7 +709,6 @@ paths:
       tags: [members]
       operationId: inviteMember
       summary: Invite a registered user by e-mail with a role (Admin)
-      x-implemented-in: T-18
       requestBody:
         required: true
         content:
@@ -749,7 +746,6 @@ paths:
       tags: [members]
       operationId: changeMemberRole
       summary: Change a member's role; a board keeps at least one Admin (Admin)
-      x-implemented-in: T-18
       requestBody:
         required: true
         content:
@@ -777,7 +773,6 @@ paths:
       tags: [members]
       operationId: removeMember
       summary: Remove a member (Admin)
-      x-implemented-in: T-18
       responses:
         '204':
           description: Removed
@@ -895,8 +890,7 @@ paths:
     post:
       tags: [jira]
       operationId: importJiraIssues
-      summary: Import open Jira issues of the linked project as cards (Admin)
-      x-implemented-in: T-24
+      summary: Link the board to a Jira project and import its open issues as cards (Admin)
       requestBody:
         required: true
         content:
@@ -918,13 +912,30 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: The board has no Jira connection, or it must be reconnected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Jira rate-limited the import; retry later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Jira is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /jira/mappings:
     get:
       tags: [jira]
       operationId: listJiraMappings
-      summary: Card to issue mappings of a board
-      x-implemented-in: T-23
+      summary: Card to issue links of a board (any member)
       parameters:
         - $ref: '#/components/parameters/BoardIdQuery'
       responses:
@@ -944,7 +955,7 @@ paths:
       tags: [jira]
       operationId: createJiraMapping
       summary: Link a card to an existing Jira issue (Member, Admin)
-      x-implemented-in: T-23
+      x-implemented-in: T-25
       requestBody:
         required: true
         content:
@@ -958,6 +969,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/JiraMapping'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /jira/status-mappings:
+    get:
+      tags: [jira]
+      operationId: listJiraStatusMappings
+      summary: Jira status to column mapping of a board, with defaults for unmapped statuses (any member)
+      parameters:
+        - $ref: '#/components/parameters/BoardIdQuery'
+      responses:
+        '200':
+          description: One entry per status of the linked Jira project
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JiraStatusMapping'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    put:
+      tags: [jira]
+      operationId: putJiraStatusMappings
+      summary: Store which column each Jira status maps to (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutJiraStatusMappingsRequest'
+      responses:
+        '200':
+          description: The full mapping after the change
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JiraStatusMapping'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1626,14 +1691,57 @@ components:
           format: uuid
         projectKey:
           type: string
+          pattern: '^[A-Z][A-Z0-9_]{1,9}$'
+          description: Links the board to this project; defaults to the board's current jiraProjectKey
     JiraImportResult:
       type: object
-      required: [imported, skipped]
+      required: [imported, created, updated, skipped]
       properties:
         imported:
           type: integer
+          description: Cards created or changed (created + updated)
+        created:
+          type: integer
+        updated:
+          type: integer
         skipped:
           type: integer
+          description: Issues whose card already matched
+    JiraStatusMapping:
+      type: object
+      required: [jiraStatusId, jiraStatusName, statusCategory, columnId, isDefault]
+      properties:
+        jiraStatusId:
+          type: string
+        jiraStatusName:
+          type: string
+        statusCategory:
+          type: string
+          enum: [new, indeterminate, done, undefined]
+        columnId:
+          type: string
+          format: uuid
+        isDefault:
+          type: boolean
+          description: True when no mapping is stored and the column comes from the status category
+    PutJiraStatusMappingsRequest:
+      type: object
+      required: [boardId, mappings]
+      properties:
+        boardId:
+          type: string
+          format: uuid
+        mappings:
+          type: array
+          items:
+            type: object
+            required: [jiraStatusId, columnId]
+            properties:
+              jiraStatusId:
+                type: string
+              columnId:
+                type: string
+                format: uuid
     JiraMapping:
       type: object
       required: [id, boardId, cardId, jiraIssueKey, jiraIssueId, jiraProjectKey]

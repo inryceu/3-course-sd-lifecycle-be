@@ -1096,3 +1096,47 @@ describe('JiraGatewayHttpClient retries', () => {
     expect(requests).toHaveLength(1);
   });
 });
+
+describe('JiraGatewayHttpClient.listProjectStatuses', () => {
+  const status = (id: string, name: string, key: string) => ({
+    id,
+    name,
+    statusCategory: { id: 1, key, name: key },
+  });
+
+  it('returns each status once across issue types', async () => {
+    respond = () => ({
+      status: 200,
+      body: [
+        {
+          id: 't1',
+          name: 'Task',
+          statuses: [status('1', 'To Do', 'new'), status('3', 'Done', 'done')],
+        },
+        {
+          id: 't2',
+          name: 'Bug',
+          statuses: [status('1', 'To Do', 'new'), status('2', 'In Progress', 'indeterminate')],
+        },
+      ],
+    });
+    const { client } = setup();
+
+    const result = await client.listProjectStatuses({ boardId: BOARD, projectKey: 'KAN' });
+
+    expect(result.map((s) => s.name)).toEqual(['To Do', 'Done', 'In Progress']);
+    expect(requests[0].url).toBe(`/ex/jira/${CLOUD}/rest/api/3/project/KAN/statuses`);
+  });
+
+  it('reports an unknown project as a 404 client error', async () => {
+    respond = () => ({
+      status: 404,
+      body: { errorMessages: ["No project could be found with key 'NOPE'."] },
+    });
+    const { client } = setup();
+
+    await expect(
+      client.listProjectStatuses({ boardId: BOARD, projectKey: 'NOPE' }),
+    ).rejects.toMatchObject({ code: 'CLIENT_ERROR', status: 404 });
+  });
+});

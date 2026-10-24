@@ -1,12 +1,13 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { EventPublisher } from '../../../common/events';
-import { BoardRole } from '../domain/board-role';
+import { BoardRole, ColumnType } from '../domain/board-role';
 import { BoardMembershipEntity } from '../infrastructure/persistence/board-membership.entity';
 import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { CardEntity } from '../infrastructure/persistence/card.entity';
 import { BoardColumnEntity } from '../infrastructure/persistence/column.entity';
 import { BoardAccessService } from './board-access.service';
+import { BoardsFacade } from './boards-facade.port';
 import { BoardsFacadeService } from './boards-facade.service';
 import { BoardsService } from './boards.service';
 import { CardsService } from './cards.service';
@@ -237,13 +238,49 @@ describe('CardsService', () => {
 });
 
 describe('BoardsFacadeService', () => {
+  const facadeWith = (
+    role: BoardRole | null,
+    cards: Partial<CardsService> = {},
+    board: Partial<BoardEntity> | null = null,
+    columns: Partial<BoardColumnEntity>[] = [],
+  ) =>
+    new BoardsFacadeService(
+      access(role),
+      cards as CardsService,
+      repo<BoardEntity>({
+        findOne: jest.fn().mockResolvedValue(board),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      }),
+      repo<BoardColumnEntity>({ find: jest.fn().mockResolvedValue(columns) }),
+    );
+
   it('exposes the member role via access service', async () => {
-    const facade = new BoardsFacadeService(access(BoardRole.VIEWER), {} as CardsService);
-    expect(await facade.getMemberRole('b', 'u')).toBe(BoardRole.VIEWER);
+    expect(await facadeWith(BoardRole.VIEWER).getMemberRole('b', 'u')).toBe(BoardRole.VIEWER);
   });
 
   it('reports strangers', async () => {
-    const facade = new BoardsFacadeService(access(null), {} as CardsService);
-    expect(await facade.getMemberRole('b', 'u')).toBeNull();
+    expect(await facadeWith(null).getMemberRole('b', 'u')).toBeNull();
+  });
+
+  it('summarises a board with its ordered columns and project key', async () => {
+    const facade = facadeWith(null, {}, { id: 'b1', jiraProjectKey: 'KAN' }, [
+      { id: 'c1', title: 'To Do', type: ColumnType.TODO, position: 0, boardId: 'b1' },
+    ]);
+    expect(await facade.getBoardSummary('b1')).toEqual({
+      id: 'b1',
+      jiraProjectKey: 'KAN',
+      columns: [{ id: 'c1', title: 'To Do', type: ColumnType.TODO, position: 0 }],
+    });
+    expect(await facadeWith(null).getBoardSummary('missing')).toBeNull();
+  });
+
+  it('offers upsertCardFromExternal through the port type and returns the outcome', async () => {
+    const upsertFromExternal = jest.fn().mockResolvedValue({ cardId: 'k1', outcome: 'created' });
+    // Typed as the port on purpose: other modules only see `BoardsFacade`.
+    const port: BoardsFacade = facadeWith(null, { upsertFromExternal });
+    const input = { boardId: 'b', columnId: 'c', jiraIssueKey: 'KAN-1', title: 'T' };
+
+    expect(await port.upsertCardFromExternal(input)).toEqual({ cardId: 'k1', outcome: 'created' });
+    expect(upsertFromExternal).toHaveBeenCalledWith(input);
   });
 });

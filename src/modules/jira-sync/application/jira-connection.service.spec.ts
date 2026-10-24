@@ -11,6 +11,8 @@ function setup(role: BoardRole | null, connection: Partial<JiraConnectionEntity>
   };
   const boards = {
     getMemberRole: jest.fn().mockResolvedValue(role),
+    getBoardSummary: jest.fn(),
+    setJiraProjectKey: jest.fn(),
     upsertCardFromExternal: jest.fn(),
     moveCardFromExternal: jest.fn(),
   };

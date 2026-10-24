@@ -17,7 +17,9 @@ import {
   JiraComment,
   JiraGateway,
   JiraIssue,
+  JiraStatus,
   JiraTransition,
+  ListProjectStatusesInput,
   ListTransitionsInput,
   ListTransitionsResult,
   ListWebhooksInput,
@@ -86,6 +88,9 @@ interface SearchIssuesResponse {
   readonly isLast?: boolean;
 }
 
+/** One entry per issue type, each with the statuses its workflow uses. */
+type ProjectStatusesResponse = ReadonlyArray<{ readonly statuses?: readonly JiraStatus[] }>;
+
 interface ListTransitionsResponse {
   readonly transitions?: JiraTransition[];
 }
@@ -118,6 +123,22 @@ export class JiraGatewayHttpClient implements JiraGateway {
     @Inject(ATLASSIAN_OAUTH) private readonly atlassian: AtlassianOAuth,
     @Inject(JIRA_GATEWAY_OPTIONS) private readonly options: JiraGatewayOptions = {},
   ) {}
+
+  async listProjectStatuses(input: ListProjectStatusesInput): Promise<JiraStatus[]> {
+    const issueTypes = await this.requestJson<ProjectStatusesResponse>(input.boardId, {
+      method: 'GET',
+      path: `/project/${encodeURIComponent(input.projectKey)}/statuses`,
+      scope: SCOPE_READ,
+      idempotent: true,
+    });
+    const byId = new Map<string, JiraStatus>();
+    for (const issueType of issueTypes ?? []) {
+      for (const status of issueType.statuses ?? []) {
+        if (!byId.has(status.id)) byId.set(status.id, status);
+      }
+    }
+    return [...byId.values()];
+  }
 
   async searchIssues(input: SearchIssuesInput): Promise<SearchIssuesResult> {
     const fields = [...new Set([...DEFAULT_SEARCH_FIELDS, ...(input.fields ?? [])])];
