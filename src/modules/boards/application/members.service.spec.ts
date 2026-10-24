@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, FindManyOptions, FindOneOptions, Repository } from 'typeorm';
 import { AuthFacade } from '../../auth';
 import { BoardRole } from '../domain/board-role';
 import { BoardMembershipEntity } from '../infrastructure/persistence/board-membership.entity';
@@ -35,14 +35,18 @@ function setup() {
       where: jest.fn().mockReturnThis(),
       getOne: jest.fn().mockResolvedValue({ id: 'board-id' }),
     }),
-    findOne: jest.fn((_entity: any, options: any) => memberships.findOne(options)),
-    count: jest.fn((_entity: any, options: any) => memberships.count(options)),
-    save: jest.fn((entity: any) => memberships.save(entity)),
-    remove: jest.fn((entity: any) => memberships.remove(entity)),
+    findOne: jest.fn((_entity: unknown, options: FindOneOptions<BoardMembershipEntity>) =>
+      memberships.findOne(options),
+    ),
+    count: jest.fn((_entity: unknown, options: FindManyOptions<BoardMembershipEntity>) =>
+      memberships.count(options),
+    ),
+    save: jest.fn((entity: BoardMembershipEntity) => memberships.save(entity)),
+    remove: jest.fn((entity: BoardMembershipEntity) => memberships.remove(entity)),
   };
 
   const dataSource = {
-    transaction: jest.fn(async (cb: (m: any) => Promise<any>) => cb(manager)),
+    transaction: jest.fn((cb: (m: typeof manager) => Promise<unknown>) => cb(manager)),
   } as unknown as DataSource;
 
   const service = new MembersService(dataSource, memberships, access, auth);

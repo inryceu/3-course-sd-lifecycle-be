@@ -6,6 +6,7 @@ The reviews of KAN-29 (#47), KAN-30 (#48) and KAN-34 (#50) left defects that are
 
 ## What Changes
 
+- **Cards (T-19, missing):** `PUT /cards/{cardId}/assignee` was in the contract and in T-19 ("cards: CRUD, move, assign") but was never implemented, so a card's assignee can only be set at creation. It is implemented here.
 - **Members (T-18):** two identical concurrent invites answer `409` instead of `500` (the unique-index violation is mapped).
 - **Members (T-18):** member behaviour is written down as a spec, `board-members`: invite / list / change role / remove, the last-admin rule under concurrency, and the 409 cases.
 - **Auth:** the `AuthFacade` doc comment that ended up on `getUserByEmail` goes back to `verifyToken`.
@@ -21,8 +22,8 @@ The reviews of KAN-29 (#47), KAN-30 (#48) and KAN-34 (#50) left defects that are
 
 ### Modified Capabilities
 
-- None.
+- `boards-columns`: adds assigning a card.
 
 ## Impact
 
-`src/modules/boards/application/members.service.ts`, `src/modules/auth/application/auth-facade.port.ts`, `src/modules/jira-sync/jira-sync.module.ts`, `docs/jira-sandbox.md`, plus the Atlassian developer console (app distribution). No environment variable changes.
+`src/modules/boards/application/members.service.ts`, `cards.service.ts` and `cards.controller.ts`, `src/modules/auth/application/auth-facade.port.ts`, `src/modules/jira-sync/jira-sync.module.ts`, `docs/jira-sandbox.md`, plus the Atlassian developer console (app distribution). No environment variable changes.

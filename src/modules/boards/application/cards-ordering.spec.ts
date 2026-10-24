@@ -38,7 +38,9 @@ describe('CardsService - Move and Ordering', () => {
     );
 
     const cardMock = { boardId: 'b1' };
-    (service as any).findCard = jest.fn().mockResolvedValue(cardMock);
+    jest
+      .spyOn(service as unknown as { findCard: () => Promise<unknown> }, 'findCard')
+      .mockResolvedValue(cardMock);
 
     await expect(
       service.move('u1', 'card-1', { columnId: 'col-2', position: 99 }),
@@ -96,10 +98,12 @@ describe('CardsService - Move and Ordering', () => {
     );
 
     const cardMock = { boardId: 'b1', columnId: 'col-1', position: 1, labels: [] };
-    (service as any).findCard = jest.fn().mockResolvedValue(cardMock);
+    jest
+      .spyOn(service as unknown as { findCard: () => Promise<unknown> }, 'findCard')
+      .mockResolvedValue(cardMock);
 
     await expect(
       service.move('u1', 'card-1', { columnId: 'col-1', position: 1 }),
-    ).resolves.not.toThrow();
+    ).resolves.toMatchObject({ id: 'card-1', columnId: 'col-1', position: 1 });
   });
 });

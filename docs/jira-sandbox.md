@@ -23,9 +23,12 @@ Everything a developer needs to run the Jira integration against a real Jira Clo
 
    If the console accepts only one callback URL, register the one you use and change it when you switch.
 4. **Settings** → copy the **Client ID** and **Secret**.
-5. **Distribution** can stay *Not sharing*: an app that is not distributed can still be authorised by members of the sites its owner administers.
+5. **Distribution** must be set to **Sharing** (Distribution → Edit). While an app is *Not sharing* ("in development"), **only the Atlassian account that owns the app** can authorise it; everyone else gets *"You don't have access to this app. This application is in development - only the owner of this application may grant it access to their account."*, even site admins. Sharing asks for:
+   - a vendor name: `BoardSync team`;
+   - a privacy policy URL: the [Privacy](#privacy) section of this document;
+   - a personal data declaration: **yes**. The app stores the issue content of the linked project (summary, description, status), which can contain personal data, and encrypted OAuth tokens. It does not store Atlassian account ids yet; update the declaration when assignee sync arrives.
 
-**Team app (created 2026-10-21):** `BoardSync (dev)` in Pavlo's developer console, access type *Resource-level* (the user picks one site at consent), classic scopes `read:jira-work`, `write:jira-work`, `read:jira-user`, `manage:jira-webhook`, callback URLs `http://localhost:8090/jira/callback` (full stack with `WEB_PORT=8090`) and `http://localhost:5173/jira/callback` (`pnpm dev`). Ask Pavlo for the Client ID and Secret (section 3). Using another `WEB_PORT` means adding its callback URL in the console first.
+**Team app (created 2026-10-21):** `BoardSync (dev)` in Pavlo's developer console, access type *Resource-level* (the user picks one site at consent), classic scopes `read:jira-work`, `write:jira-work`, `read:jira-user`, `manage:jira-webhook`, callback URLs `http://localhost:8090/jira/callback` (full stack with `WEB_PORT=8090`) and `http://localhost:5173/jira/callback` (`pnpm dev`). Distribution is **Sharing** since 2026-10-25, so every team member can connect their own boards. Ask Pavlo for the Client ID and Secret (section 3). Using another `WEB_PORT` means adding its callback URL in the console first.
 
 The backend requests `JIRA_SCOPES` (default `read:jira-work,write:jira-work,read:jira-user,offline_access`). Add `manage:jira-webhook` to `JIRA_SCOPES` when T-26 starts registering webhooks; it is a valid classic 3LO scope (the archived `jira-connection` design note that called it invalid is wrong). Every scope in `JIRA_SCOPES` must also be configured in the console, otherwise Atlassian rejects the authorise request.
 
@@ -85,5 +88,10 @@ Later (T-26) the backend registers its own webhook through the REST API with the
 - [ ] Sandbox site and project `SBX` with To Do / In Progress / In Review / Done and sample issues
 - [x] OAuth 2.0 (3LO) app with the scopes above and the local callback URL(s)
 - [ ] Client ID and Secret shared through the password manager, present in everyone's `.env.local`
+- [x] App distribution set to Sharing, so teammates can authorise it
 - [ ] Connect flow (section 4) succeeds against the sandbox
 - [ ] A webhook reaches a laptop through the tunnel (section 5)
+
+## Privacy
+
+BoardSync stores, per connected board: the Atlassian cloud id and site URL, the OAuth access and refresh tokens (AES-256-GCM encrypted, never logged or returned by the API), the granted scopes, and for imported issues their key, id, summary, description and status mapping. Atlassian account ids are not stored yet. Disconnecting a board deletes its tokens; deleting a board deletes its cards. Questions: the team via the repository's issue tracker.

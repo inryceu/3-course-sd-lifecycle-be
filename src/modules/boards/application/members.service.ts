@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { AUTH_FACADE, AuthFacade } from '../../auth';
 import { BoardRole } from '../domain/board-role';
 import { BoardMembershipEntity } from '../infrastructure/persistence/board-membership.entity';
@@ -72,13 +72,22 @@ export class MembersService {
       throw new ConflictException('User is already a member of this board');
     }
 
-    const saved = await this.memberships.save(
-      this.memberships.create({
-        boardId,
-        userId: targetUser.id,
-        role,
-      }),
-    );
+    let saved: BoardMembershipEntity;
+    try {
+      saved = await this.memberships.save(
+        this.memberships.create({
+          boardId,
+          userId: targetUser.id,
+          role,
+        }),
+      );
+    } catch (error) {
+      // A concurrent identical invite passed the check above; the unique index decides.
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('User is already a member of this board');
+      }
+      throw error;
+    }
 
     return {
       boardId: saved.boardId,
@@ -165,4 +174,12 @@ export class MembersService {
       await manager.remove(membership);
     });
   }
+}
+
+/** Postgres `unique_violation`. */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof QueryFailedError &&
+    (error.driverError as { code?: string } | undefined)?.code === '23505'
+  );
 }

@@ -10,6 +10,7 @@ import {
   Length,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -73,4 +74,12 @@ export class MoveCardDto {
   @IsInt()
   @Min(0)
   position: number;
+}
+
+export class AssignCardDto {
+  @ApiProperty({ format: 'uuid', nullable: true, description: 'A board member, or null to clear' })
+  // null clears the assignee; a missing value fails IsUUID, so the field stays required.
+  @ValidateIf((dto: AssignCardDto) => dto.assigneeId !== null)
+  @IsUUID()
+  assigneeId: string | null;
 }
