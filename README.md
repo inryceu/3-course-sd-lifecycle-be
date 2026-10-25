@@ -14,17 +14,37 @@ This repository implements the backend: REST API, a Socket.IO gateway for real-t
 - **Modular monolith.** Feature modules with a fixed internal layout and automated boundary checks - see [`docs/architecture/module-structure.md`](docs/architecture/module-structure.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).
 - **Contract first with the frontend.** The frontend repository generates its API types from the OpenAPI file.
 
+## Project structure
+
+```
+src/
+├── app.module.ts
+├── main.ts
+├── common/           # shared kernel (events, ports, base entity, decorators)
+├── config/           # database, validation, env configuration
+├── database/         # TypeORM migrations
+├── modules/          # feature modules (modular monolith)
+│   ├── auth/         # domain, application, infrastructure, presentation
+│   ├── boards/       # domain, application, infrastructure, presentation
+│   ├── jira-sync/    # domain, application, infrastructure, presentation
+│   ├── realtime/     # application, presentation
+│   └── health/       # reference module
+└── architecture/     # boundary tests
+```
+
 ## Modules
 
 | Module | Responsibility | Status |
 | --- | --- | --- |
-| `auth` | Registration, login, JWT (<= 1 h), global guard, `AUTH_FACADE` | implemented (FR-01) |
-| `boards` | Boards, columns (ordering, minimum 3), cards, board roles, `BOARDS_FACADE` | boards/columns/cards core implemented (FR-03, FR-04); labels, comments, members: planned |
-| `jira-sync` | OAuth 2.0 (3LO) connect flow, AES-256-GCM token storage | connect/status/disconnect implemented (FR-02); import and sync: planned |
-| `realtime` | Socket.IO namespace `/realtime`, board rooms, event delivery | implemented (FR-11 transport) |
-| `health` | `GET /api/v1/health` (database readiness) - reference module | implemented |
+| `auth` | Registration, login, JWT (≤ 1 h), global guard, `AUTH_FACADE` | ✅ Implemented (FR-01) |
+| `boards` | Boards, columns (ordering, min 3), cards, board roles, `BOARDS_FACADE` | ✅ Core implemented (FR-03, FR-04); 🚧 Labels, comments, members (FR-08, FR-09, FR-10) |
+| `jira-sync` | OAuth 2.0 (3LO) connect flow, AES-256-GCM token vault, Jira gateway client | ✅ Connect/status/disconnect (FR-02); ✅ Token vault; ✅ Gateway client (T-23); 🚧 Import (FR-05), sync (FR-06), webhooks (FR-12) |
+| `realtime` | Socket.IO namespace `/realtime`, board rooms, event delivery | ✅ Transport (FR-11); 🚧 Presence, typing indicators |
+| `health` | `GET /api/v1/health` (database readiness) — reference module | ✅ Implemented |
 
 Cross-module rules (public API only, no entity/repository sharing, no cycles) are enforced by `pnpm lint`.
+
+**Module structure** follows Clean Architecture per module (`domain/`, `application/`, `infrastructure/`, `presentation/`) — see [`docs/architecture/module-structure.md`](docs/architecture/module-structure.md).
 
 ## Tech stack
 
@@ -95,6 +115,15 @@ To check the whole stack in one go (build, wait for every healthcheck, migration
 Startup order is gated by health checks (postgres -> backend with migrations applied -> frontend); data lives in the named volume `boardsync-postgres-full-data`. Stop with `docker compose -f docker-compose.full.yml down` (add `-v` to delete the data). Rationale: [`docs/adr/0001-full-stack-compose.md`](docs/adr/0001-full-stack-compose.md).
 
 The per-environment compose files remain: `docker-compose.yml` (development, hot reload) and `docker-compose.prod.yml` (production-like).
+
+## Diagrams & verification
+
+- **PlantUML sources:** `docs/declarative/` (component, class, sequence, state)
+- **Rendered PNGs:** `docs/image/`
+- **Verification records:** `docs/verification/KAN-*.md` (KAN-24 token vault, KAN-25 OAuth connect, KAN-34 Jira gateway)
+- **Jira sandbox setup:** [`docs/jira-sandbox.md`](docs/jira-sandbox.md)
+- **Process & Definition of Done:** [`docs/process.md`](docs/process.md)
+- **ADR (full-stack compose rationale):** [`docs/adr/0001-full-stack-compose.md`](docs/adr/0001-full-stack-compose.md)
 
 ## Environment variables
 
