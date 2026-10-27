@@ -15,8 +15,8 @@
 
 ## 4. Frontend
 
-- [ ] 4.1 Regenerate API types; notifications bell in the layout (unread count, list, mark read, live update on `notification.created`); verify component tests
+- [x] 4.1 Regenerate API types; notifications bell in the layout (unread count, list, mark read, live update on `notification.created`); verify component tests
 
 ## 5. Verification
 
-- [ ] 5.1 Backend `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`, `pnpm build`, `pnpm api:validate`, `openspec validate --specs --strict`; frontend `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`
+- [x] 5.1 Backend `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`, `pnpm build`, `pnpm api:validate`, `openspec validate --specs --strict`; frontend `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`

@@ -1,7 +1,7 @@
 # web-client Specification
 
 ## Purpose
-Defines what a signed-in user can do in the BoardSync web client with the features the backend implements: boards, columns, cards, board roles, live board updates and the Jira connection (FR-02, FR-03, FR-04, FR-06, FR-11).
+Defines what a signed-in user can do in the BoardSync web client with the features the backend implements: boards, columns, cards, board roles, live board updates, deadline reminder notifications and the Jira connection (FR-02, FR-03, FR-04, FR-06, FR-09, FR-11).
 
 ## Requirements
 
@@ -114,3 +114,18 @@ The card dialog SHALL let Admins and Members choose the assignee among the board
 #### Scenario: Assign
 - **WHEN** a Member picks a member as assignee in the card dialog
 - **THEN** the card shows that assignee after reload
+
+### Requirement: Notifications bell
+The web client SHALL show a notifications bell in the header of every signed-in page with the number of unread notifications. Opening it SHALL list the user's notifications newest first, let the user mark one read, and the bell SHALL update without a reload when a `notification.created` event arrives.
+
+#### Scenario: Unread count
+- **WHEN** a signed-in user has two unread notifications
+- **THEN** the bell shows 2
+
+#### Scenario: Mark read
+- **WHEN** the user opens the bell and marks a deadline reminder read
+- **THEN** the item is shown as read and the count decreases
+
+#### Scenario: Live reminder
+- **WHEN** a reminder is created for the user while the page is open
+- **THEN** the count increases and the reminder appears in the list without a reload
