@@ -684,6 +684,29 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /cards/{cardId}/comments/{commentId}:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+      - name: commentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [comments]
+      operationId: deleteComment
+      summary: Delete a comment (Author or Admin)
+      x-implemented-in: T-30
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /boards/{boardId}/members:
     parameters:
