@@ -125,6 +125,17 @@ describe('Configuration validation schema', () => {
     });
   });
 
+  describe('deadline reminders', () => {
+    it('defaults REMINDER_INTERVAL_SECONDS to 60 and accepts 0 (off)', () => {
+      expect(validate(validConfig).value.REMINDER_INTERVAL_SECONDS).toBe(60);
+      expect(validate({ ...validConfig, REMINDER_INTERVAL_SECONDS: 0 }).error).toBeUndefined();
+    });
+
+    it.each([-1, 1.5, 'soon'])('rejects REMINDER_INTERVAL_SECONDS=%s', (value) => {
+      expect(validate({ ...validConfig, REMINDER_INTERVAL_SECONDS: value }).error).toBeDefined();
+    });
+  });
+
   describe('encryption key and secrets', () => {
     it.each([
       ['too short', '0123456789abcdef'],

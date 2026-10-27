@@ -22,6 +22,8 @@ const defaults: Record<string, string> = {
   JIRA_REDIRECT_URI: 'http://localhost:5173/jira/callback',
   TOKEN_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
   WEBHOOK_SECRET: 'integration-test-webhook-secret-32-chars-min',
+  // The e2e tests call the reminder run directly.
+  REMINDER_INTERVAL_SECONDS: '0',
 };
 
 for (const [key, value] of Object.entries(defaults)) {
