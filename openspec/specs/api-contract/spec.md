@@ -61,3 +61,10 @@ Every operation implemented by the backend SHALL use the path, method, status co
 #### Scenario: Frontend types
 - **WHEN** the frontend regenerates its types from the spec
 - **THEN** `JiraImportResult`, `JiraStatusMapping` and `PutJiraStatusMappingsRequest` are available
+
+### Requirement: Notifications operations
+`docs/api/openapi.yaml` SHALL describe `GET /notifications` returning `NotificationPage` and `POST /notifications/{notificationId}/read` returning `Notification` (404 for an unknown or another user's notification), and these operations SHALL no longer be marked with `x-implemented-in`.
+
+#### Scenario: Contract matches the implementation
+- **WHEN** a reader opens the notifications operations
+- **THEN** they carry no `x-implemented-in` and document 200, 401 and (for mark read) 404

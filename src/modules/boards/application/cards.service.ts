@@ -118,7 +118,10 @@ export class CardsService {
     if (input.title !== undefined) card.title = input.title;
     if (input.description !== undefined) card.description = input.description;
     if (input.deadline !== undefined) {
-      card.deadline = input.deadline ? new Date(input.deadline) : null;
+      const deadline = input.deadline ? new Date(input.deadline) : null;
+      // A new deadline gets its own reminder.
+      if (deadline?.getTime() !== card.deadline?.getTime()) card.reminderSentAt = null;
+      card.deadline = deadline;
     }
     const saved = await this.cards.save(card);
 
@@ -236,6 +239,8 @@ export class CardsService {
     if (assigneeId !== null) {
       await this.assertMember(card.boardId, assigneeId);
     }
+    // The new assignee gets their own reminder.
+    if (card.assigneeId !== assigneeId) card.reminderSentAt = null;
     card.assigneeId = assigneeId;
     const view = toCardView(await this.cards.save(card));
     await this.events.publish(

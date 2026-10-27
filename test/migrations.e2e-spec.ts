@@ -58,6 +58,7 @@ describe('Migrations (e2e)', () => {
         'jira_connections',
         'jira_oauth_states',
         'jira_issue_mappings',
+        'notifications',
         'sync_logs',
         'migrations',
       ]),

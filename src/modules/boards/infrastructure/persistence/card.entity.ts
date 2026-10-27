@@ -49,6 +49,10 @@ export class CardEntity extends BaseEntity {
   @Column({ name: 'assignee_id', type: 'uuid', nullable: true })
   assigneeId: string | null;
 
+  /** When the deadline reminder was claimed (UTC); cleared when the deadline or assignee changes. */
+  @Column({ name: 'reminder_sent_at', type: 'timestamptz', nullable: true })
+  reminderSentAt: Date | null;
+
   @ManyToOne('BoardColumnEntity', (column: BoardColumnEntity) => column.cards, {
     onDelete: 'CASCADE',
   })
