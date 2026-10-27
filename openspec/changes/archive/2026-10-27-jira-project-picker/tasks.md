@@ -12,8 +12,8 @@
 
 ## 4. Frontend
 
-- [ ] 4.1 `jiraApi.projects`, regenerated types, project picker in `JiraImportPanel` with the text fallback; verify component tests (loading, list, preselect, selection → import call, failure fallback)
+- [x] 4.1 `jiraApi.projects`, regenerated types, project picker in `JiraImportPanel` with the text fallback; verify component tests (loading, list, preselect, selection → import call, failure fallback)
 
 ## 5. Verification
 
-- [ ] 5.1 Backend `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`, `pnpm build`, `pnpm api:validate`, `openspec validate --specs --strict`; frontend `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`
+- [x] 5.1 Backend `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`, `pnpm build`, `pnpm api:validate`, `openspec validate --specs --strict`; frontend `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`
