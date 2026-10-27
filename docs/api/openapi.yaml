@@ -931,6 +931,51 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /jira/projects:
+    get:
+      tags: [jira]
+      operationId: listJiraProjects
+      summary: Jira projects visible to the board's connection, sorted by name (any member)
+      parameters:
+        - $ref: '#/components/parameters/BoardIdQuery'
+      responses:
+        '200':
+          description: Projects of the connected Jira site
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JiraProject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The Jira connection lacks the read:jira-work scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The board has no Jira connection, or it must be reconnected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Jira rate-limited the request; retry later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Jira is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /jira/mappings:
     get:
       tags: [jira]
@@ -1707,6 +1752,19 @@ components:
         skipped:
           type: integer
           description: Issues whose card already matched
+    JiraProject:
+      type: object
+      required: [id, key, name]
+      properties:
+        id:
+          type: string
+          example: '10000'
+        key:
+          type: string
+          example: KAN
+        name:
+          type: string
+          example: Kanban
     JiraStatusMapping:
       type: object
       required: [jiraStatusId, jiraStatusName, statusCategory, columnId, isDefault]

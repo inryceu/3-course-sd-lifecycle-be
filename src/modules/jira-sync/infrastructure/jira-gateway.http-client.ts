@@ -17,8 +17,10 @@ import {
   JiraComment,
   JiraGateway,
   JiraIssue,
+  JiraProject,
   JiraStatus,
   JiraTransition,
+  ListProjectsInput,
   ListProjectStatusesInput,
   ListTransitionsInput,
   ListTransitionsResult,
@@ -68,6 +70,7 @@ const REFRESH_WINDOW_MS = 60_000;
 const MAX_RETRY_AFTER_SECONDS = 60;
 const CONNECTION_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']);
 const SCOPE_READ = 'read:jira-work';
+const PROJECT_PAGE_SIZE = 50;
 const SCOPE_WRITE = 'write:jira-work';
 const SCOPE_MANAGE_WEBHOOK = 'manage:jira-webhook';
 
@@ -85,6 +88,11 @@ interface RequestSpec {
 interface SearchIssuesResponse {
   readonly issues?: JiraIssue[];
   readonly nextPageToken?: string;
+  readonly isLast?: boolean;
+}
+
+interface ProjectSearchResponse {
+  readonly values?: readonly JiraProject[];
   readonly isLast?: boolean;
 }
 
@@ -123,6 +131,24 @@ export class JiraGatewayHttpClient implements JiraGateway {
     @Inject(ATLASSIAN_OAUTH) private readonly atlassian: AtlassianOAuth,
     @Inject(JIRA_GATEWAY_OPTIONS) private readonly options: JiraGatewayOptions = {},
   ) {}
+
+  async listProjects(input: ListProjectsInput): Promise<JiraProject[]> {
+    const projects: JiraProject[] = [];
+    for (;;) {
+      const page = await this.requestJson<ProjectSearchResponse | undefined>(input.boardId, {
+        method: 'GET',
+        path: `/project/search?startAt=${projects.length}&maxResults=${PROJECT_PAGE_SIZE}`,
+        scope: SCOPE_READ,
+        idempotent: true,
+      });
+      const values = page?.values ?? [];
+      projects.push(...values.map(({ id, key, name }) => ({ id, key, name })));
+      // An empty page also stops, so a server that never sets isLast cannot loop forever.
+      if (page?.isLast !== false || values.length === 0) {
+        return projects;
+      }
+    }
+  }
 
   async listProjectStatuses(input: ListProjectStatusesInput): Promise<JiraStatus[]> {
     const issueTypes = await this.requestJson<ProjectStatusesResponse>(input.boardId, {

@@ -83,11 +83,19 @@ The web client SHALL show each board's Jira connection status and let the board 
 - **THEN** the status shows the board as not connected
 
 ### Requirement: Jira import from the web client
-The Jira Sync page SHALL let the board Admin of a connected board enter or confirm the Jira project key, run the import, and see its result (created, updated, skipped). It SHALL show every member the status → column mapping, and let the Admin change and save it.
+The Jira Sync page SHALL let the board Admin of a connected board choose the Jira project from the list of projects of the connected site (shown as `name (KEY)`, the board's linked project preselected), run the import, and see its result (created, updated, skipped). When the project list cannot be loaded, the page SHALL fall back to entering the project key by hand. It SHALL show every member the status → column mapping, and let the Admin change and save it.
 
 #### Scenario: Import
-- **WHEN** the Admin of a connected board enters `KAN` and chooses Import
-- **THEN** the page shows the counts returned by the backend and the board shows the imported cards
+- **WHEN** the Admin of a connected board picks `Kanban (KAN)` and chooses Import
+- **THEN** the import runs for `KAN`, the page shows the counts returned by the backend and the board shows the imported cards
+
+#### Scenario: Linked project preselected
+- **WHEN** the Admin opens the Jira Sync page of a board linked to `KAN`
+- **THEN** the project picker shows `KAN` selected
+
+#### Scenario: Project list unavailable
+- **WHEN** listing the projects fails
+- **THEN** the page offers a project key text field instead of the picker and the import still works with the typed key
 
 #### Scenario: Edit the mapping
 - **WHEN** the Admin picks another column for a status and saves

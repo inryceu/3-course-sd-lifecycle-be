@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../auth';
+import { JiraProject } from '../application/jira-gateway.port';
 import { ImportResult, IssueLinkView, JiraImportService } from '../application/jira-import.service';
 import {
   JiraStatusMappingService,
@@ -24,6 +25,15 @@ export class JiraImportController {
   })
   import(@CurrentUser('id') userId: string, @Body() dto: JiraImportDto): Promise<ImportResult> {
     return this.importer.import(userId, dto.boardId, dto.projectKey);
+  }
+
+  @Get('projects')
+  @ApiOperation({ summary: "Jira projects visible to the board's connection (any member)" })
+  listProjects(
+    @CurrentUser('id') userId: string,
+    @Query() query: BoardQueryDto,
+  ): Promise<JiraProject[]> {
+    return this.importer.listProjects(userId, query.boardId);
   }
 
   @Get('status-mappings')
