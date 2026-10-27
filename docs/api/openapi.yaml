@@ -1083,7 +1083,6 @@ paths:
       tags: [notifications]
       operationId: listNotifications
       summary: In-app notifications of the current user, newest first
-      x-implemented-in: T-32
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
@@ -1094,6 +1093,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -1102,7 +1103,7 @@ paths:
       tags: [notifications]
       operationId: markNotificationRead
       summary: Mark a notification as read
-      x-implemented-in: T-32
+      description: Idempotent; the first `readAt` is kept. Another user's notification answers 404.
       parameters:
         - name: notificationId
           in: path

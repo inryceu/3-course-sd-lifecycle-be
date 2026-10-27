@@ -72,6 +72,9 @@ export const validationSchema = Joi.object({
 
   // Webhook
   WEBHOOK_SECRET: Joi.string().min(32).required(),
+
+  // Deadline reminders: seconds between scheduler runs, 0 turns the scheduler off
+  REMINDER_INTERVAL_SECONDS: Joi.number().integer().min(0).default(60),
 }).required();
 
 /** Converts a Joi validation error to one readable message listing every problem. */

@@ -18,6 +18,10 @@ import { CardsController } from './presentation/cards.controller';
 import { ColumnsController } from './presentation/columns.controller';
 import { MembersController } from './presentation/members.controller';
 import { MembersService } from './application/members.service';
+import { DeadlineRemindersService } from './application/deadline-reminders.service';
+import { NotificationsService } from './application/notifications.service';
+import { NotificationEntity } from './infrastructure/persistence/notification.entity';
+import { NotificationsController } from './presentation/notifications.controller';
 
 @Module({
   imports: [
@@ -32,14 +36,23 @@ import { MembersService } from './application/members.service';
       LabelEntity,
       CommentEntity,
       BoardMembershipEntity,
+      NotificationEntity,
     ]),
   ],
-  controllers: [BoardsController, ColumnsController, CardsController, MembersController],
+  controllers: [
+    BoardsController,
+    ColumnsController,
+    CardsController,
+    MembersController,
+    NotificationsController,
+  ],
   providers: [
     BoardsService,
     ColumnsService,
     CardsService,
     MembersService,
+    NotificationsService,
+    DeadlineRemindersService,
     BoardsFacadeService,
     { provide: BOARDS_FACADE, useExisting: BoardsFacadeService },
   ],
