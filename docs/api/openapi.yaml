@@ -500,7 +500,6 @@ paths:
       tags: [labels]
       operationId: listLabels
       summary: Labels of a board
-      x-implemented-in: T-30
       responses:
         '200':
           description: Labels
@@ -518,7 +517,6 @@ paths:
       tags: [labels]
       operationId: createLabel
       summary: Create a label (Member, Admin)
-      x-implemented-in: T-30
       requestBody:
         required: true
         content:
@@ -553,7 +551,6 @@ paths:
       tags: [labels]
       operationId: updateLabel
       summary: Rename or recolour a label (Member, Admin)
-      x-implemented-in: T-30
       requestBody:
         required: true
         content:
@@ -579,7 +576,6 @@ paths:
       tags: [labels]
       operationId: deleteLabel
       summary: Delete a label (Member, Admin)
-      x-implemented-in: T-30
       responses:
         '204':
           description: Deleted
@@ -603,7 +599,6 @@ paths:
       tags: [labels]
       operationId: attachLabel
       summary: Attach a label to a card (Member, Admin)
-      x-implemented-in: T-30
       responses:
         '200':
           description: Updated card
@@ -621,7 +616,6 @@ paths:
       tags: [labels]
       operationId: detachLabel
       summary: Detach a label from a card (Member, Admin)
-      x-implemented-in: T-30
       responses:
         '200':
           description: Updated card
@@ -643,7 +637,6 @@ paths:
       tags: [comments]
       operationId: listComments
       summary: Comments of a card, oldest first
-      x-implemented-in: T-30
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
@@ -662,7 +655,6 @@ paths:
       tags: [comments]
       operationId: createComment
       summary: Comment on a card; mirrored to Jira when the card is linked (Member, Admin)
-      x-implemented-in: T-30
       requestBody:
         required: true
         content:
@@ -678,6 +670,28 @@ paths:
                 $ref: '#/components/schemas/Comment'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /cards/{cardId}/comments/{commentId}:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+      - name: commentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [comments]
+      operationId: deleteComment
+      summary: Delete a comment (Author or Admin)
+      responses:
+        '204':
+          description: Deleted
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
