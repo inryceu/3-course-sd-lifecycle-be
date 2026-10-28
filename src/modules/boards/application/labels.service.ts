@@ -33,7 +33,7 @@ export class LabelsService {
       const label = this.labels.create({ boardId, name, color: color ?? undefined });
       return await this.labels.save(label);
     } catch (error) {
-      if (error instanceof QueryFailedError && (error.driverError as any).code === '23505') {
+      if (error instanceof QueryFailedError && error.driverError.code === '23505') {
         throw new ConflictException('A label with this name already exists on this board');
       }
       throw error;
@@ -56,7 +56,7 @@ export class LabelsService {
     try {
       return await this.labels.save(label);
     } catch (error) {
-      if (error instanceof QueryFailedError && (error.driverError as any).code === '23505') {
+      if (error instanceof QueryFailedError && error.driverError.code === '23505') {
         throw new ConflictException('A label with this name already exists');
       }
       throw error;
