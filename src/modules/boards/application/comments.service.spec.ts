@@ -63,4 +63,19 @@ describe('CommentsService', () => {
     const service = new CommentsService(comments, cards, access(BoardRole.MEMBER), events());
     await expect(service.delete('u1', 'c1', 'cm1')).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('throws NotFoundException if the user is not a member of the board', async () => {
+    const cards = repo<CardEntity>({
+      findOne: jest.fn().mockResolvedValue({ id: 'c1', boardId: 'b1' }),
+    });
+    const comments = repo<CommentEntity>({
+      findOne: jest.fn().mockResolvedValue({ id: 'cm1', authorId: 'u1' }),
+    });
+    const accessMock = access(null);
+    accessMock.requireMember = jest.fn().mockRejectedValue(new NotFoundException());
+
+    const service = new CommentsService(comments, cards, accessMock, events());
+    await expect(service.delete('u1', 'c1', 'cm1')).rejects.toBeInstanceOf(NotFoundException);
+    expect(accessMock.requireMember).toHaveBeenCalledWith('u1', 'b1');
+  });
 });

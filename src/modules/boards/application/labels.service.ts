@@ -1,6 +1,6 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { EVENT_PUBLISHER, EventPublisher, createEvent } from '../../../common/events';
 import { CardEntity } from '../infrastructure/persistence/card.entity';
 import { LabelEntity } from '../infrastructure/persistence/label.entity';
@@ -22,13 +22,18 @@ export class LabelsService {
     return this.labels.find({ where: { boardId }, order: { name: 'ASC' } });
   }
 
-  async create(userId: string, boardId: string, name: string, color: string): Promise<LabelEntity> {
+  async create(
+    userId: string,
+    boardId: string,
+    name: string,
+    color?: string,
+  ): Promise<LabelEntity> {
     await this.access.requireEditor(userId, boardId);
     try {
-      const label = this.labels.create({ boardId, name, color });
+      const label = this.labels.create({ boardId, name, color: color ?? undefined });
       return await this.labels.save(label);
-    } catch (error: any) {
-      if (error.code === '23505') {
+    } catch (error) {
+      if (error instanceof QueryFailedError && (error.driverError as any).code === '23505') {
         throw new ConflictException('A label with this name already exists on this board');
       }
       throw error;
@@ -50,9 +55,10 @@ export class LabelsService {
 
     try {
       return await this.labels.save(label);
-    } catch (error: any) {
-      if (error.code === '23505')
+    } catch (error) {
+      if (error instanceof QueryFailedError && (error.driverError as any).code === '23505') {
         throw new ConflictException('A label with this name already exists');
+      }
       throw error;
     }
   }
@@ -62,6 +68,15 @@ export class LabelsService {
     if (!label) throw new NotFoundException('Label not found');
     await this.access.requireEditor(userId, label.boardId);
     await this.labels.remove(label);
+
+    await this.events.publish(
+      createEvent('board.updated', {
+        boardId: label.boardId,
+        actorId: userId,
+        origin: 'user',
+        payload: { id: label.boardId } as any,
+      }),
+    );
   }
 
   async attachToCard(userId: string, cardId: string, labelId: string): Promise<CardView> {

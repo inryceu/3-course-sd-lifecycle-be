@@ -1,4 +1,3 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { EventPublisher } from '../../../common/events';
 import { BoardRole } from '../domain/board-role';

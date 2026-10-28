@@ -1,4 +1,10 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -39,28 +45,26 @@ export class CommentsService {
 
     const qb = this.comments
       .createQueryBuilder('c')
-      .where('c.card_id = :cardId', { cardId })
+      .where('c.cardId = :cardId', { cardId })
       .orderBy('c.createdAt', 'ASC')
       .addOrderBy('c.id', 'ASC')
       .take(take + 1);
 
     if (cursor) {
-      try {
-        const decodedDate = new Date(Buffer.from(cursor, 'base64').toString('ascii'));
-        if (!isNaN(decodedDate.getTime())) {
-          qb.andWhere('c.createdAt > :cursor', { cursor: decodedDate });
-        }
-      } catch (e) {
-        void e;
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(cursor)) {
+        throw new BadRequestException('Invalid cursor');
       }
+      qb.andWhere(
+        '(c."createdAt", c.id) > (SELECT x."createdAt", x.id FROM comments x WHERE x.id = :cursor)',
+        { cursor },
+      );
     }
 
     const results = await qb.getMany();
     const hasNext = results.length > take;
     const items = hasNext ? results.slice(0, take) : results;
-    const nextCursor = hasNext
-      ? Buffer.from(items[items.length - 1].createdAt.toISOString()).toString('base64')
-      : null;
+    const nextCursor = hasNext ? items[items.length - 1].id : null;
 
     return {
       items: items.map(toCommentSnapshot),
@@ -98,14 +102,24 @@ export class CommentsService {
     const card = await this.cards.findOne({ where: { id: cardId } });
     if (!card) throw new NotFoundException('Card not found');
 
+    const role = await this.access.requireMember(userId, card.boardId);
+
     const comment = await this.comments.findOne({ where: { id: commentId, cardId } });
     if (!comment) throw new NotFoundException('Comment not found');
 
-    const role = await this.access.getRole(userId, card.boardId);
     if (role !== BoardRole.ADMIN && comment.authorId !== userId) {
       throw new ForbiddenException('Only the author or an admin can delete this comment');
     }
 
     await this.comments.remove(comment);
+
+    await this.events.publish(
+      createEvent('board.updated', {
+        boardId: card.boardId,
+        actorId: userId,
+        origin: 'user',
+        payload: { id: card.boardId } as any,
+      }),
+    );
   }
 }
