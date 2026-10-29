@@ -278,6 +278,88 @@ describe('JiraGatewayHttpClient.searchIssues', () => {
   });
 });
 
+describe('JiraGatewayHttpClient getIssue', () => {
+  it('reads the issue id, key and current status', async () => {
+    respond = () => ({
+      status: 200,
+      body: {
+        id: ISSUE.id,
+        key: ISSUE.key,
+        fields: { status: ISSUE.fields.status },
+      },
+    });
+    const { client } = setup();
+
+    await expect(client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-1' })).resolves.toEqual({
+      id: ISSUE.id,
+      key: ISSUE.key,
+      status: ISSUE.fields.status,
+    });
+    expect(requests[0].method).toBe('GET');
+    expect(requests[0].url).toContain('/issue/KAN-1?fields=status');
+  });
+
+  it('maps a missing issue to JiraClientError', async () => {
+    respond = () => ({ status: 404, body: { errorMessages: ['Issue does not exist'] } });
+    const { client } = setup();
+
+    const failure = client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-404' });
+    await expect(failure).rejects.toBeInstanceOf(JiraClientError);
+    await expect(failure).rejects.toMatchObject({
+      status: 404,
+      providerError: 'Issue does not exist',
+    });
+  });
+
+  it('caps the per-request timeout by a shortened caller budget', async () => {
+    respond = () => ({
+      status: 200,
+      body: { id: ISSUE.id, key: ISSUE.key, fields: { status: ISSUE.fields.status } },
+    });
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    const { client } = setup({ timeBudgetMs: 5_000, timeoutMs: 10_000 });
+
+    await client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-1', timeBudgetMs: 250 });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(250);
+  });
+
+  it('caps a caller budget above the configured budget', async () => {
+    respond = () => ({
+      status: 200,
+      body: { id: ISSUE.id, key: ISSUE.key, fields: { status: ISSUE.fields.status } },
+    });
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    const { client } = setup({ timeBudgetMs: 5_000, timeoutMs: 10_000 });
+
+    await client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-1', timeBudgetMs: 60_000 });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+  });
+
+  it('uses the configured budget when the caller omits the override', async () => {
+    respond = () => ({
+      status: 200,
+      body: { id: ISSUE.id, key: ISSUE.key, fields: { status: ISSUE.fields.status } },
+    });
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    const { client } = setup({ timeBudgetMs: 4_000, timeoutMs: 10_000 });
+
+    await client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-1' });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(4_000);
+  });
+
+  it('rejects before calling Jira when the caller budget is already exhausted', async () => {
+    const { client } = setup({ timeBudgetMs: 5_000 });
+
+    const failure = client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-1', timeBudgetMs: 0 });
+    await expect(failure).rejects.toBeInstanceOf(JiraTimeBudgetExceededError);
+    await expect(failure).rejects.toMatchObject({ timeBudgetMs: 0, attempts: 0 });
+    expect(requests).toHaveLength(0);
+  });
+});
+
 describe('JiraGatewayHttpClient transitions and comments', () => {
   it('lists transitions with filters', async () => {
     respond = () => ({
