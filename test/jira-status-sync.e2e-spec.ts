@@ -16,7 +16,10 @@ import {
   JiraTransition,
   ListTransitionsInput,
 } from '../src/modules/jira-sync/application/jira-gateway.port';
-import { JiraClientError, JiraServerError } from '../src/modules/jira-sync/domain/jira-gateway.errors';
+import {
+  JiraClientError,
+  JiraServerError,
+} from '../src/modules/jira-sync/domain/jira-gateway.errors';
 import { JiraConnectionEntity } from '../src/modules/jira-sync/infrastructure/persistence/jira-connection.entity';
 import { JiraIssueMappingEntity } from '../src/modules/jira-sync/infrastructure/persistence/jira-issue-mapping.entity';
 import {
@@ -99,7 +102,9 @@ class FakeJira {
     return { id: '10001', key: input.issueIdOrKey, status: this.currentStatus };
   }
 
-  listTransitions(input: ListTransitionsInput): Promise<{ transitions: readonly JiraTransition[] }> {
+  listTransitions(
+    input: ListTransitionsInput,
+  ): Promise<{ transitions: readonly JiraTransition[] }> {
     this.listTransitionsCalls.push(input);
     return Promise.resolve({ transitions: this.transitions });
   }
@@ -141,9 +146,7 @@ describe('Jira status sync (e2e)', () => {
     const rows = await dataSource.getRepository(SyncLogEntity).find({
       order: { createdAt: 'ASC' },
     });
-    return rows.filter(
-      (row) => (row.payload as { cardId?: string } | null)?.cardId === cardId,
-    );
+    return rows.filter((row) => (row.payload as { cardId?: string } | null)?.cardId === cardId);
   };
 
   const waitForLog = async (cardId: string): Promise<SyncLogEntity> => {
@@ -283,10 +286,7 @@ describe('Jira status sync (e2e)', () => {
     const moveRequest = move(card.id, done.id);
 
     try {
-      const response = await Promise.race([
-        moveRequest,
-        sleep(1_000).then(() => null),
-      ]);
+      const response = await Promise.race([moveRequest, sleep(1_000).then(() => null)]);
       expect(response).not.toBeNull();
       if (response === null) return;
       expect(response.status).toBe(200);
