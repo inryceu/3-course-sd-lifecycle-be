@@ -51,7 +51,7 @@ export class JiraStatusMappingService {
   async list(userId: string, boardId: string): Promise<StatusMappingView[]> {
     await this.requireRole(userId, boardId, false);
     const linked = await this.requireLinkedBoard(boardId);
-    return this.resolve(linked, await this.projectStatuses(boardId, linked.projectKey));
+    return this.resolveMappings(linked, await this.projectStatuses(boardId, linked.projectKey));
   }
 
   /** Admin only. Every status must belong to the project and every column to the board. */
@@ -87,12 +87,28 @@ export class JiraStatusMappingService {
         ['boardId', 'jiraStatusId'],
       );
     }
-    return this.resolve(linked, statuses);
+    return this.resolveMappings(linked, statuses);
+  }
+
+  /** Resolves each status to its stored or default column and reports which one was used. */
+  async resolveMappings(linked: LinkedBoard, statuses: JiraStatus[]): Promise<StatusMappingView[]> {
+    const stored = await this.mappings.find({ where: { boardId: linked.board.id } });
+    const storedById = new Map(stored.map((m) => [m.jiraStatusId, m]));
+    const columnIds = new Set(linked.board.columns.map((c) => c.id));
+
+    return statuses.map((status) => {
+      const row = storedById.get(status.id);
+      // A stored column that was deleted since falls back to the default.
+      if (row && columnIds.has(row.columnId)) {
+        return this.view(status, row.columnId, false);
+      }
+      return this.view(status, this.defaultColumn(linked.board, status), true);
+    });
   }
 
   /** Column for each status id, stored or default. Used by the import. */
   async columnsByStatus(linked: LinkedBoard, statuses: JiraStatus[]): Promise<Map<string, string>> {
-    const views = await this.resolve(linked, statuses);
+    const views = await this.resolveMappings(linked, statuses);
     return new Map(views.map((v) => [v.jiraStatusId, v.columnId]));
   }
 
@@ -133,21 +149,6 @@ export class JiraStatusMappingService {
       throw new BadRequestException(`"${key}" is not a Jira project key`);
     }
     return { board, projectKey: key };
-  }
-
-  private async resolve(linked: LinkedBoard, statuses: JiraStatus[]): Promise<StatusMappingView[]> {
-    const stored = await this.mappings.find({ where: { boardId: linked.board.id } });
-    const storedById = new Map(stored.map((m) => [m.jiraStatusId, m]));
-    const columnIds = new Set(linked.board.columns.map((c) => c.id));
-
-    return statuses.map((status) => {
-      const row = storedById.get(status.id);
-      // A stored column that was deleted since falls back to the default.
-      if (row && columnIds.has(row.columnId)) {
-        return this.view(status, row.columnId, false);
-      }
-      return this.view(status, this.defaultColumn(linked.board, status), true);
-    });
   }
 
   private defaultColumn(board: BoardSummary, status: JiraStatus): string {
