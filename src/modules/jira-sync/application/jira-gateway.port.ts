@@ -17,6 +17,8 @@ export interface JiraGateway {
   listProjectStatuses(input: ListProjectStatusesInput): Promise<JiraStatus[]>;
   /** Searches issues with JQL. Caller fields are merged with `DEFAULT_SEARCH_FIELDS`. */
   searchIssues(input: SearchIssuesInput): Promise<SearchIssuesResult>;
+  /** Reads one issue's current workflow status. */
+  getIssue(input: GetIssueInput): Promise<GetIssueResult>;
   /** Lists the transitions available for an issue. */
   listTransitions(input: ListTransitionsInput): Promise<ListTransitionsResult>;
   /** Executes a transition. Resolves when Jira returns 204. */
@@ -169,6 +171,26 @@ export interface JiraComment {
   readonly updated: string;
 }
 
+/** Input for reading one issue's current status. */
+export interface GetIssueInput {
+  /** Board whose Jira connection supplies the cloud id and token. */
+  readonly boardId: string;
+  /** Issue key or numeric id. */
+  readonly issueIdOrKey: string;
+  /** Optional per-call budget, capped by the client's configured budget. */
+  readonly timeBudgetMs?: number;
+}
+
+/** Current issue identity and workflow status. */
+export interface GetIssueResult {
+  /** Numeric issue id as a string. */
+  readonly id: string;
+  /** Human-readable issue key, e.g. `KAN-1`. */
+  readonly key: string;
+  /** Current workflow status. */
+  readonly status: JiraStatus;
+}
+
 /** Input for listing available transitions. */
 export interface ListTransitionsInput {
   /** Board whose Jira connection supplies the cloud id and token. */
@@ -181,6 +203,8 @@ export interface ListTransitionsInput {
   readonly transitionId?: string;
   /** Include transitions the user cannot currently execute. */
   readonly includeUnavailableTransitions?: boolean;
+  /** Optional per-call budget, capped by the client's configured budget. */
+  readonly timeBudgetMs?: number;
 }
 
 /** Available transitions for one issue. */
@@ -223,6 +247,8 @@ export interface DoTransitionInput {
   readonly fields?: Readonly<Record<string, unknown>>;
   /** Optional field update operations. */
   readonly update?: Readonly<Record<string, readonly unknown[]>>;
+  /** Optional per-call budget, capped by the client's configured budget. */
+  readonly timeBudgetMs?: number;
 }
 
 /** Input for reading issue comments. */
