@@ -96,6 +96,24 @@ export class JiraStatusMappingService {
     return new Map(views.map((v) => [v.jiraStatusId, v.columnId]));
   }
 
+  /** Column for one status without calling Jira, or null when the board does not exist. */
+  async columnForStatus(
+    boardId: string,
+    status: { id: string; name?: string; categoryKey?: string; statusCategory?: { key?: string } },
+  ): Promise<string | null> {
+    const board = await this.boards.getBoardSummary(boardId);
+    if (!board) return null;
+    const row = await this.mappings.findOne({
+      where: { boardId, jiraStatusId: status.id },
+    });
+    if (row && board.columns.some((column) => column.id === row.columnId)) {
+      return row.columnId;
+    }
+    const category = status.categoryKey ?? status.statusCategory?.key ?? '';
+    const wanted = CATEGORY_COLUMN[category] ?? ColumnType.TODO;
+    return (board.columns.find((column) => column.type === wanted) ?? board.columns[0])?.id ?? null;
+  }
+
   async projectStatuses(boardId: string, projectKey: string): Promise<JiraStatus[]> {
     try {
       return await this.gateway.listProjectStatuses({ boardId, projectKey });

@@ -16,11 +16,13 @@ function setup(role: BoardRole | null, connection: Partial<JiraConnectionEntity>
     upsertCardFromExternal: jest.fn(),
     moveCardFromExternal: jest.fn(),
   };
+  const webhooks = { removeForBoard: jest.fn().mockResolvedValue(undefined) };
   const service = new JiraConnectionService(
     connections as unknown as Repository<JiraConnectionEntity>,
     boards,
+    webhooks as never,
   );
-  return { service, connections };
+  return { service, connections, webhooks };
 }
 
 const stored = {
@@ -61,15 +63,17 @@ describe('JiraConnectionService', () => {
     await expect(service.disconnect('u', 'b')).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('lets the admin disconnect, deleting the stored credentials', async () => {
-    const { service, connections } = setup(BoardRole.ADMIN, stored);
+  it('lets the admin disconnect, deleting the stored credentials and webhook row', async () => {
+    const { service, connections, webhooks } = setup(BoardRole.ADMIN, stored);
     await service.disconnect('u', 'b');
     expect(connections.delete).toHaveBeenCalledWith({ boardId: 'b' });
+    expect(webhooks.removeForBoard).toHaveBeenCalledWith('b');
   });
 
   it.each([BoardRole.MEMBER, BoardRole.VIEWER])('refuses %s to disconnect', async (role) => {
-    const { service, connections } = setup(role, stored);
+    const { service, connections, webhooks } = setup(role, stored);
     await expect(service.disconnect('u', 'b')).rejects.toBeInstanceOf(ForbiddenException);
     expect(connections.delete).not.toHaveBeenCalled();
+    expect(webhooks.removeForBoard).not.toHaveBeenCalled();
   });
 });

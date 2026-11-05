@@ -20,7 +20,7 @@ This repository implements the backend: REST API, a Socket.IO gateway for real-t
 | --- | --- | --- |
 | `auth` | Registration, login, JWT (<= 1 h), global guard, `AUTH_FACADE` | implemented (FR-01) |
 | `boards` | Boards, columns (ordering, minimum 3), cards, board roles, `BOARDS_FACADE` | boards/columns/cards core implemented (FR-03, FR-04); labels, comments, members: planned |
-| `jira-sync` | OAuth 2.0 (3LO) connect flow, AES-256-GCM token storage | connect/status/disconnect implemented (FR-02); import and sync: planned |
+| `jira-sync` | OAuth 2.0 (3LO) connect flow, imports, status mappings, Jira→BoardSync webhook moves | connect/import/webhook receiver implemented; outbound write-back planned |
 | `realtime` | Socket.IO namespace `/realtime`, board rooms, event delivery | implemented (FR-11 transport) |
 | `health` | `GET /api/v1/health` (database readiness) - reference module | implemented |
 
@@ -110,7 +110,8 @@ Every variable is validated at startup (`src/config/validation.schema.ts`); the 
 | `BCRYPT_ROUNDS` | no (`10`) | bcrypt cost, 10-15 |
 | `JIRA_CLIENT_ID`, `JIRA_CLIENT_SECRET` | yes | Atlassian OAuth 2.0 (3LO) app |
 | `JIRA_REDIRECT_URI` | yes | callback URL registered in the app; points at the **frontend** route `/jira/callback`; `https` in production |
-| `JIRA_SCOPES` | no | default `read:jira-work,write:jira-work,read:jira-user,offline_access` |
+| `JIRA_SCOPES` | no | default `read:jira-work,write:jira-work,read:jira-user,manage:jira-webhook,offline_access`; existing connections must reconnect after adding `manage:jira-webhook` |
+| `JIRA_WEBHOOK_URL` | no | public `POST /api/v1/jira/webhook` URL registered with Jira; `https` in production; registration is skipped when unset |
 | `JIRA_AUTH_BASE_URL`, `JIRA_API_BASE_URL` | no | Atlassian endpoints (override for tests; `https` in production) |
 | `TOKEN_ENCRYPTION_KEY` | yes | 64 hex characters (32 bytes) for AES-256-GCM |
 | `WEBHOOK_SECRET` | yes | at least 32 characters |
@@ -122,6 +123,7 @@ Every variable is validated at startup (`src/config/validation.schema.ts`); the 
 - **Authentication:** `POST /api/v1/auth/register` or `/login` return `{ accessToken, expiresIn, user }`; send `Authorization: Bearer <accessToken>`. Tokens last at most one hour; there is no refresh endpoint - log in again after a 401.
 - **Roles are per board:** `ADMIN` (settings, columns, Jira connection), `MEMBER` (cards), `VIEWER` (read-only). Users who are not members get `404`.
 - **Connect Jira (board Admin):** `GET /jira/oauth/start?boardId=` returns an Atlassian authorise URL; Atlassian redirects to the frontend route `/jira/callback?code&state`, which calls `GET /jira/oauth/callback?code&state`. Setting up the Atlassian app, a sandbox site and a webhook tunnel: [`docs/jira-sandbox.md`](docs/jira-sandbox.md).
+- **Jira webhooks:** after a connection has a project key, `POST /api/v1/jira/webhook` accepts Atlassian deliveries. Every request needs `X-Hub-Signature` (HMAC-SHA256 of the raw body with `WEBHOOK_SECRET`) or a bearer JWT signed with `JIRA_CLIENT_SECRET`; invalid proofs get `401`. Deliveries are deduplicated for seven days. Dynamic webhooks are refreshed every six hours when they expire within seven days, and replaced after Atlassian's three-month refresh grace period.
 
 ## Contributing
 

@@ -26,6 +26,7 @@ export interface JiraConfig {
   scopes: string[];
   authBaseUrl: string;
   apiBaseUrl: string;
+  webhookUrl?: string;
 }
 
 export interface CryptoConfig {
@@ -74,13 +75,15 @@ export const jiraConfig = registerAs('jira', (): JiraConfig => ({
   clientSecret: process.env['JIRA_CLIENT_SECRET'],
   redirectUri: process.env['JIRA_REDIRECT_URI'],
   scopes: (
-    process.env['JIRA_SCOPES'] ?? 'read:jira-work,write:jira-work,read:jira-user,offline_access'
+    process.env['JIRA_SCOPES'] ??
+    'read:jira-work,write:jira-work,read:jira-user,manage:jira-webhook,offline_access'
   )
     .split(',')
     .map((scope) => scope.trim())
     .filter((scope) => scope.length > 0),
   authBaseUrl: process.env['JIRA_AUTH_BASE_URL'] ?? 'https://auth.atlassian.com',
   apiBaseUrl: process.env['JIRA_API_BASE_URL'] ?? 'https://api.atlassian.com',
+  webhookUrl: process.env['JIRA_WEBHOOK_URL'],
 }));
 
 /** `TOKEN_ENCRYPTION_KEY` is 32 bytes encoded as 64 hex characters (AES-256-GCM). */

@@ -143,15 +143,27 @@ The gateway requires:
 - `write:jira-work`
 - `manage:jira-webhook` (webhook registration/list/refresh only)
 
-T-16 defaults are `read:jira-work,write:jira-work,read:jira-user,offline_access`.
+`JIRA_SCOPES` now defaults to `read:jira-work,write:jira-work,read:jira-user,manage:jira-webhook,offline_access`. The console app must list every requested scope. Connections created before `manage:jira-webhook` was added must reconnect; until then webhook calls fail early and registration is skipped with a logged warning, without failing the connect or import that triggered it.
 
 Before each operation the gateway checks the scopes stored on `JiraConnectionEntity.scopes` (a string array). If the stored scopes are non-empty and the required scope is absent, it throws `JiraClientError(403, 'missing_scope')` without a network call or token refresh. Empty or unknown scopes are not blocked. Jira itself reports a missing scope as HTTP 401, not 403.
 
-**Decision for this change:** do **not** modify `JIRA_SCOPES` or the `.env.*` defaults. The console app already lists `manage:jira-webhook`, but backend webhook calls fail early with `JiraClientError(403, 'missing_scope')` until the scope is added to `JIRA_SCOPES` and existing boards reconnect. That is a **T-26 follow-up**; `docs/jira-sandbox.md` already expects it when webhook registration starts. `read:jira-user` is extra but harmless.
+## Webhook lifecycle
+
+`JiraWebhookLifecycleService` owns dynamic registration and refresh:
+
+- Registration runs after the OAuth callback and after an import stores a project key, when the board has a connection and `JIRA_WEBHOOK_URL` is set.
+- `registerWebhook` is followed by `listWebhooks`, using the returned `expirationDate`; if it cannot be read, expiry falls back to 30 days after creation.
+- The URL is the configured public `/api/v1/jira/webhook` endpoint; the event is `jira:issue_updated`, filtered to the imported project.
+- A six-hour unref'd timer runs a sweep; tests disable the timer and call `sweep()` directly. A Postgres advisory lock prevents duplicate work when more than one backend instance runs.
+- Rows expiring within seven days are refreshed with `refreshWebhooks`. Rows expired less than three months ago are also refreshed; older rows are registered again with `force: true`.
+- Disconnect deletes the local `jira_webhooks` row. No outbound Jira call happens on the receiver path itself.
+
+The receiver authenticates deliveries in `JiraWebhookAuthenticityService`: HMAC-SHA256 over the raw body via `X-Hub-Signature`, or a JWT bearer signed with `JIRA_CLIENT_SECRET`, with issuer `JIRA_CLIENT_ID` and numeric expiry. HMAC takes precedence and invalid HMAC does not fall through to JWT. See `docs/jira-sandbox.md` for tunnel setup.
 
 ## Operational limitations
 
 - **Single-instance only for refresh.** Single-flight is in-process. Multiple backend instances can refresh the same connection concurrently; Atlassian's refresh-token reuse leeway is not a guarantee. Deploy a single sync instance or ensure only one instance syncs a board.
 - **No runtime response validation.** DTOs are compile-time only; Jira response changes are not validated at runtime.
 - Optional webhook filters (`fieldIdsFilter`, `issuePropertyKeysFilter`) are not exposed yet.
-- Webhook calls fail early with `JiraClientError(403, 'missing_scope')` until the T-26 scope change and reconnection.
+- Webhook registration and refresh are best-effort: failures are logged but do not fail connect, import, or webhook delivery. A missed sweep waits for the next six-hour interval.
+- `JIRA_WEBHOOK_URL` must be the externally reachable HTTPS endpoint; registration is skipped when unset.
