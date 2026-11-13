@@ -156,7 +156,7 @@ Before each operation the gateway checks the scopes stored on `JiraConnectionEnt
 - The URL is the configured public `/api/v1/jira/webhook` endpoint; the event is `jira:issue_updated`, filtered to the imported project.
 - A six-hour unref'd timer runs a sweep; tests disable the timer and call `sweep()` directly. A Postgres advisory lock prevents duplicate work when more than one backend instance runs.
 - Rows expiring within seven days are refreshed with `refreshWebhooks`. Rows expired less than three months ago are also refreshed; older rows are registered again with `force: true`.
-- Disconnect deletes the local `jira_webhooks` row. No outbound Jira call happens on the receiver path itself.
+- Disconnect deletes the local `jira_webhooks` row; the remote webhook lives until it expires, but the receiver ignores boards without a connection. No outbound Jira call happens on the receiver path itself.
 
 The receiver authenticates deliveries in `JiraWebhookAuthenticityService`: HMAC-SHA256 over the raw body via `X-Hub-Signature`, or a JWT bearer signed with `JIRA_CLIENT_SECRET`, with issuer `JIRA_CLIENT_ID` and numeric expiry. HMAC takes precedence and invalid HMAC does not fall through to JWT. See `docs/jira-sandbox.md` for tunnel setup.
 

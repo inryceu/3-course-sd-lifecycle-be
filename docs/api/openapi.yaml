@@ -1055,7 +1055,7 @@ paths:
         - name: X-Atlassian-Webhook-Identifier
           in: header
           required: false
-          description: Stable delivery id used for deduplication; the fallback is a hash of the payload.
+          description: Sent by Atlassian but not used for deduplication (it is not signed); the key is a hash of event, issue id and changelog id, or of the raw body.
           schema:
             type: string
         - name: X-Atlassian-Webhook-Retry
