@@ -13,6 +13,7 @@ import {
   ParsedJiraWebhook,
 } from './jira-webhook-payload';
 import { JiraStatusMappingService } from './jira-status-mapping.service';
+import { JiraSyncConflictDetector } from './jira-sync-conflict.detector';
 
 type StatusDelivery = Extract<ParsedJiraWebhook, { kind: 'status' }>;
 
@@ -34,6 +35,7 @@ export class JiraWebhookService {
     @InjectRepository(JiraConnectionEntity)
     private readonly connections: Repository<JiraConnectionEntity>,
     @Inject(BOARDS_FACADE) private readonly boards: BoardsFacade,
+    private readonly conflicts: JiraSyncConflictDetector,
   ) {}
 
   async receive(rawBody: Buffer, body: unknown, headers: IncomingHttpHeaders): Promise<void> {
@@ -126,11 +128,29 @@ export class JiraWebhookService {
     if (watermark === 'stale') return 'stale';
 
     try {
-      return await this.boards.moveCardFromExternal({
+      const conflict = await this.conflicts.noteJiraChange(
+        {
+          linkId: link.id,
+          boardId: link.boardId,
+          cardId: link.cardId,
+          issueKey: link.jiraIssueKey,
+        },
+        {
+          columnId,
+          statusId: payload.status.id,
+          statusName: payload.status.name,
+          at: payload.timestamp === null ? new Date() : new Date(Number(payload.timestamp)),
+        },
+      );
+      // Jira wins a conflict: the card moves as for any delivery, then the conflict is logged.
+      const outcome = await this.boards.moveCardFromExternal({
         boardId: link.boardId,
         jiraIssueKey: link.jiraIssueKey,
         columnId,
       });
+      if (!conflict) return outcome;
+      await this.conflicts.record(conflict);
+      return `${outcome}+conflict`;
     } catch (error) {
       if (payload.timestamp !== null && watermark !== 'skipped') {
         await this.restoreWatermark(link.id, payload.timestamp, watermark.previous).catch(

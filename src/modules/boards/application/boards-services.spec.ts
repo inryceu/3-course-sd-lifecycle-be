@@ -11,6 +11,7 @@ import { BoardsFacade } from './boards-facade.port';
 import { BoardsFacadeService } from './boards-facade.service';
 import { BoardsService } from './boards.service';
 import { CardsService } from './cards.service';
+import { NotificationsService } from './notifications.service';
 import { ColumnsService } from './columns.service';
 
 const failingTransaction = () => jest.fn().mockRejectedValue(new Error('database down'));
@@ -252,6 +253,7 @@ describe('BoardsFacadeService', () => {
         update: jest.fn().mockResolvedValue({ affected: 1 }),
       }),
       repo<BoardColumnEntity>({ find: jest.fn().mockResolvedValue(columns) }),
+      {} as NotificationsService,
     );
 
   it('exposes the member role via access service', async () => {

@@ -1,7 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { NotificationEntity } from '../infrastructure/persistence/notification.entity';
+import { createEvent, EVENT_PUBLISHER, EventPublisher } from '../../../common/events';
+import { BoardRole } from '../domain/board-role';
+import { BoardMembershipEntity } from '../infrastructure/persistence/board-membership.entity';
+import {
+  NotificationEntity,
+  NotificationType,
+} from '../infrastructure/persistence/notification.entity';
 import { NotificationPageView, NotificationView, toNotificationView } from './views';
 
 @Injectable()
@@ -9,7 +15,40 @@ export class NotificationsService {
   constructor(
     @InjectRepository(NotificationEntity)
     private readonly notifications: Repository<NotificationEntity>,
+    @InjectRepository(BoardMembershipEntity)
+    private readonly memberships: Repository<BoardMembershipEntity>,
+    @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
+
+  /**
+   * One notification for every Admin of the board, each announced with `notification.created`
+   * after it is stored. Returns how many were created.
+   */
+  async notifyAdmins(
+    boardId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<number> {
+    const admins = await this.memberships.find({ where: { boardId, role: BoardRole.ADMIN } });
+    if (admins.length === 0) return 0;
+    const created = await this.notifications.save(
+      admins.map(({ userId }) =>
+        this.notifications.create({ recipientId: userId, boardId, type, payload, readAt: null }),
+      ),
+    );
+    for (const notification of created) {
+      await this.events.publish(
+        createEvent('notification.created', {
+          boardId,
+          payload: {
+            recipientId: notification.recipientId,
+            notification: toNotificationView(notification),
+          },
+        }),
+      );
+    }
+    return created.length;
+  }
 
   /**
    * The user's notifications, newest first. The cursor is the id of the last item of the previous

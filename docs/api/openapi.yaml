@@ -1144,8 +1144,11 @@ paths:
     get:
       tags: [jira]
       operationId: listJiraConflicts
-      summary: Logged synchronisation conflicts of a board (Admin)
-      x-implemented-in: T-34
+      summary: Logged synchronisation conflicts of a board, newest first (Admin)
+      description: |
+        A conflict is a BoardSync user move of a linked card and a Jira status change of the same
+        issue at most 5 seconds apart (either order) that put the card in different columns.
+        Jira wins by default (`resolution: jira`, `resolvedAt: null`) until an admin resolves it.
       parameters:
         - $ref: '#/components/parameters/BoardIdQuery'
         - $ref: '#/components/parameters/Limit'
@@ -1163,6 +1166,64 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /jira/conflicts/{conflictId}/resolve:
+    post:
+      tags: [jira]
+      operationId: resolveJiraConflict
+      summary: Keep the Jira version or push the BoardSync version of a conflict (Admin)
+      description: |
+        `jira` reads the issue's current Jira status and moves the card to its column; nothing is
+        written to Jira. `boardsync` transitions the issue to the status of the conflict's
+        BoardSync column through the outbound status sync (one `sync_logs` row) and, when Jira
+        accepts it, moves the card back to that column. A conflict is resolved once; when the Jira
+        call fails the conflict stays unresolved.
+      parameters:
+        - name: conflictId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveJiraConflictRequest'
+      responses:
+        '200':
+          description: The resolved conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraConflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The conflict is already resolved, or Jira must be reconnected for this board
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Jira rate-limited the request; retry later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Jira is unavailable or did not accept the BoardSync version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /notifications:
     get:
@@ -1872,7 +1933,21 @@ components:
           type: string
     JiraConflict:
       type: object
-      required: [id, boardId, cardId, jiraIssueKey, boardStatus, jiraStatus, detectedAt]
+      required:
+        - id
+        - boardId
+        - cardId
+        - jiraIssueKey
+        - boardColumnId
+        - boardStatus
+        - boardChangedAt
+        - jiraColumnId
+        - jiraStatus
+        - jiraChangedAt
+        - detectedAt
+        - resolution
+        - resolvedAt
+        - resolvedById
       properties:
         id:
           type: string
@@ -1885,16 +1960,52 @@ components:
           format: uuid
         jiraIssueKey:
           type: string
+        boardColumnId:
+          type: string
+          format: uuid
+          description: Column the BoardSync user moved the card to
         boardStatus:
           type: string
+          description: Title of that column when the conflict was detected
+        boardChangedAt:
+          type: string
+          format: date-time
+          description: Time of the BoardSync move
+        jiraColumnId:
+          type: string
+          format: uuid
+          description: Column the Jira status maps to
         jiraStatus:
           type: string
+          description: Jira status name
+        jiraChangedAt:
+          type: string
+          format: date-time
+          description: Time of the Jira change (the webhook `timestamp`)
         detectedAt:
           type: string
           format: date-time
         resolution:
           type: string
+          enum: [jira, boardsync]
+          description: Version the card ended with; `jira` is applied automatically on detection
+        resolvedAt:
+          type: string
+          format: date-time
           nullable: true
+          description: When an admin resolved the conflict; null while it awaits a decision
+        resolvedById:
+          type: string
+          format: uuid
+          nullable: true
+    ResolveJiraConflictRequest:
+      type: object
+      required: [resolution]
+      properties:
+        resolution:
+          type: string
+          enum: [jira, boardsync]
+          description: '`jira` keeps the Jira version, `boardsync` pushes the BoardSync version to Jira'
     JiraConflictPage:
       type: object
       required: [items]
