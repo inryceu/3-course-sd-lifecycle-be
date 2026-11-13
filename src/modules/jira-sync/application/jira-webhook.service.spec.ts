@@ -63,6 +63,10 @@ function setup() {
     getBoardSummary: jest.fn().mockResolvedValue(BOARD),
     moveCardFromExternal: jest.fn().mockResolvedValue('moved'),
   };
+  const conflicts = {
+    noteJiraChange: jest.fn().mockResolvedValue(null),
+    record: jest.fn().mockResolvedValue(undefined),
+  };
   const service = new JiraWebhookService(
     authenticity as never,
     deliveries as never,
@@ -70,8 +74,18 @@ function setup() {
     links as never,
     connections as never,
     boards as never,
+    conflicts as never,
   );
-  return { service, authenticity, deliveries, statusMappings, links, connections, boards };
+  return {
+    service,
+    authenticity,
+    deliveries,
+    statusMappings,
+    links,
+    connections,
+    boards,
+    conflicts,
+  };
 }
 
 describe('JiraWebhookService', () => {
@@ -316,5 +330,60 @@ describe('JiraWebhookService', () => {
     expect(ctx.statusMappings.columnsByStatus).toHaveBeenCalledWith(expect.anything(), [
       { id: '5', name: 'To Do', statusCategory: { id: 2, key: 'new', name: 'To Do' } },
     ]);
+  });
+});
+
+describe('JiraWebhookService conflicts', () => {
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('notes the Jira change with its column, status and delivery time', async () => {
+    const ctx = setup();
+
+    await ctx.service.receive(RAW, BODY, HEADERS);
+
+    expect(ctx.conflicts.noteJiraChange).toHaveBeenCalledWith(
+      { linkId: 'link-1', boardId: 'board-1', cardId: 'card-1', issueKey: 'KAN-7' },
+      {
+        columnId: 'col-done',
+        statusId: '3',
+        statusName: 'Done',
+        at: new Date(BODY.timestamp),
+      },
+    );
+    expect(ctx.conflicts.record).not.toHaveBeenCalled();
+  });
+
+  it('moves the card (Jira wins) and then records a detected conflict', async () => {
+    const ctx = setup();
+    const conflict = { linkId: 'link-1' };
+    ctx.conflicts.noteJiraChange.mockResolvedValue(conflict);
+    const order: string[] = [];
+    ctx.boards.moveCardFromExternal.mockImplementation(() => {
+      order.push('move');
+      return Promise.resolve('moved');
+    });
+    ctx.conflicts.record.mockImplementation(() => {
+      order.push('record');
+      return Promise.resolve();
+    });
+
+    await ctx.service.receive(RAW, BODY, HEADERS);
+
+    expect(ctx.conflicts.record).toHaveBeenCalledWith(conflict);
+    expect(order).toEqual(['move', 'record']);
+  });
+
+  it('does not note a stale delivery', async () => {
+    const ctx = setup();
+    ctx.links.query.mockResolvedValue([]);
+
+    await ctx.service.receive(RAW, BODY, HEADERS);
+
+    expect(ctx.conflicts.noteJiraChange).not.toHaveBeenCalled();
   });
 });
