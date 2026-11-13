@@ -233,7 +233,10 @@ describe('Jira status sync (e2e)', () => {
   });
 
   it('writes no row for a Jira-originated move', async () => {
-    const { board, card, issueKey, done } = await linkedCard();
+    const { board, card, issueKey, todo, done } = await linkedCard();
+    const witness = await createCard(app, admin, todo.id, 'Witness card');
+    const witnessKey = `KAN-${++issueCounter}`;
+    await dataSource.getRepository(CardEntity).update(witness.id, { jiraIssueKey: witnessKey });
 
     await expect(
       facade.moveCardFromExternal({
@@ -243,8 +246,12 @@ describe('Jira status sync (e2e)', () => {
         position: 0,
       }),
     ).resolves.toBe('moved');
+    // Barrier: a user move on the same board, started later, has finished its sync, so a
+    // leaked run for the Jira-originated move would have reached the gateway by now.
+    await move(witness.id, done.id).expect(200);
+    await waitForLog(witness.id);
 
-    expect(jira.getIssueCalls).toHaveLength(0);
+    expect(jira.getIssueCalls.map((call) => call.issueIdOrKey)).toEqual([witnessKey]);
     await expect(logsFor(card.id)).resolves.toHaveLength(0);
   });
 

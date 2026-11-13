@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { BoardRole, BoardsFacade, BoardSummary, ColumnType } from '../../boards';
 import { CardSnapshot, DomainEventOf } from '../../../common/events/domain-events';
-import { JiraClientError, JiraServerError } from '../domain/jira-gateway.errors';
+import { JiraClientError, JiraServerError, JiraTimeoutError } from '../domain/jira-gateway.errors';
 import { JiraConnectionEntity } from '../infrastructure/persistence/jira-connection.entity';
 import { JiraIssueMappingEntity } from '../infrastructure/persistence/jira-issue-mapping.entity';
 import { JiraStatusMappingEntity } from '../infrastructure/persistence/jira-status-mapping.entity';
@@ -348,6 +348,95 @@ describe('JiraStatusSyncService', () => {
     logs.save.mockRejectedValue(new Error('database unavailable'));
 
     await expect(service.syncCardMove(makeEvent())).rejects.toThrow('database unavailable');
+  });
+
+  it('leaves Jira in the later status after two quick moves of one card', async () => {
+    const { service, gateway, logs } = setup();
+    let jiraStatus = TODO;
+    const all = [transition('21', DOING), transition('31', DONE)];
+    gateway.getIssue.mockImplementation(() =>
+      Promise.resolve({ id: '10001', key: 'KAN-1', status: jiraStatus }),
+    );
+    gateway.listTransitions.mockImplementation(() =>
+      Promise.resolve({ transitions: all.filter((t) => t.to.id !== jiraStatus.id) }),
+    );
+    // The first transition reaches Jira after the second one would have.
+    let calls = 0;
+    gateway.doTransition.mockImplementation(async (input) => {
+      const delay = ++calls === 1 ? 60 : 5;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      jiraStatus = all.find((t) => t.id === input.transitionId)!.to;
+    });
+
+    await Promise.all([
+      service.syncCardMove(makeEvent({ fromColumnId: 'col-todo', toColumnId: 'col-doing' })),
+      service.syncCardMove(makeEvent({ fromColumnId: 'col-doing', toColumnId: 'col-done' })),
+    ]);
+
+    expect(jiraStatus).toEqual(DONE);
+    expect(logs.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('still runs the next move of an issue after the previous log write failed', async () => {
+    const { service, gateway, logs } = setup();
+    logs.save.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const first = service.syncCardMove(makeEvent());
+    const second = service.syncCardMove(makeEvent());
+
+    await expect(first).rejects.toThrow('database unavailable');
+    await expect(second).resolves.toBeUndefined();
+    expect(gateway.getIssue).toHaveBeenCalledTimes(2);
+  });
+
+  it('records a database failure while resolving the board as sync failed, reading the board once', async () => {
+    const { service, facade, connections, gateway, logs } = setup();
+    connections.exist.mockRejectedValue(new Error('Connection terminated unexpectedly'));
+
+    await service.syncCardMove(makeEvent());
+
+    expect(gateway.getIssue).not.toHaveBeenCalled();
+    expect(facade.getBoardSummary).toHaveBeenCalledTimes(1);
+    expect(logs.save.mock.calls[0][0]).toMatchObject({
+      status: SyncStatus.FAILED,
+      payload: { reason: 'sync failed' },
+      errorMessage: 'Connection terminated unexpectedly',
+    });
+  });
+
+  it('fails with board not linked when the board has no Jira connection', async () => {
+    const { service, logs } = setup({ connected: false });
+
+    await service.syncCardMove(makeEvent());
+
+    expect(logs.save.mock.calls[0][0]).toMatchObject({
+      status: SyncStatus.FAILED,
+      payload: { reason: 'board not linked' },
+    });
+  });
+
+  it('records a timed-out transition as an unknown outcome', async () => {
+    const { service, gateway, logs } = setup();
+    gateway.doTransition.mockRejectedValue(new JiraTimeoutError(1, 1));
+
+    await service.syncCardMove(makeEvent());
+
+    expect(logs.save.mock.calls[0][0]).toMatchObject({
+      status: SyncStatus.FAILED,
+      payload: { reason: 'deadline exceeded', outcome: 'unknown', transitionId: '31' },
+    });
+    expect(errorSpy.mock.calls[0][0]).toContain('outcome unknown');
+  });
+
+  it('logs a successful synchronization with its latency', async () => {
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const { service } = setup();
+
+    await service.syncCardMove(makeEvent());
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/KAN-1 on board b1 completed in \d+ms/),
+    );
   });
 
   it('ignores non-user, same-column and unlinked moves without writing a log', async () => {
