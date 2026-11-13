@@ -36,6 +36,11 @@ export interface WebhookConfig {
   secret: string;
 }
 
+export interface RemindersConfig {
+  /** Seconds between deadline reminder runs; 0 disables the scheduler. */
+  intervalSeconds: number;
+}
+
 export interface DatabaseConfig {
   host: string;
   port: number;
@@ -92,6 +97,10 @@ export const webhookConfig = registerAs('webhook', (): WebhookConfig => ({
   secret: process.env['WEBHOOK_SECRET'],
 }));
 
+export const remindersConfig = registerAs('reminders', (): RemindersConfig => ({
+  intervalSeconds: parseInt(process.env['REMINDER_INTERVAL_SECONDS'] ?? '60', 10),
+}));
+
 export const allConfigs = [
   appConfig,
   databaseConfig,
@@ -99,4 +108,5 @@ export const allConfigs = [
   jiraConfig,
   cryptoConfig,
   webhookConfig,
+  remindersConfig,
 ];

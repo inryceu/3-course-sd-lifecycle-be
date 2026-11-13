@@ -2,6 +2,7 @@ import { BoardRole, ColumnType } from '../domain/board-role';
 import { BoardColumnEntity } from '../infrastructure/persistence/column.entity';
 import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { CardEntity } from '../infrastructure/persistence/card.entity';
+import { NotificationEntity } from '../infrastructure/persistence/notification.entity';
 
 /** API-shaped read models (dates as ISO strings). They match `docs/api/openapi.yaml`. */
 
@@ -87,4 +88,25 @@ export const toBoardDetailView = (board: BoardEntity, myRole: BoardRole): BoardD
     ...toColumnView(column),
     cards: [...(column.cards ?? [])].sort(byPosition).map(toCardView),
   })),
+});
+
+export interface NotificationView {
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationPageView {
+  items: NotificationView[];
+  nextCursor: string | null;
+}
+
+export const toNotificationView = (notification: NotificationEntity): NotificationView => ({
+  id: notification.id,
+  type: notification.type,
+  payload: notification.payload,
+  readAt: notification.readAt ? notification.readAt.toISOString() : null,
+  createdAt: notification.createdAt.toISOString(),
 });

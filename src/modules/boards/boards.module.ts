@@ -22,6 +22,10 @@ import { MembersController } from './presentation/members.controller';
 import { LabelsController } from './presentation/labels.controller';
 import { CommentsController } from './presentation/comments.controller';
 import { MembersService } from './application/members.service';
+import { DeadlineRemindersService } from './application/deadline-reminders.service';
+import { NotificationsService } from './application/notifications.service';
+import { NotificationEntity } from './infrastructure/persistence/notification.entity';
+import { NotificationsController } from './presentation/notifications.controller';
 
 @Module({
   imports: [
@@ -36,6 +40,7 @@ import { MembersService } from './application/members.service';
       LabelEntity,
       CommentEntity,
       BoardMembershipEntity,
+      NotificationEntity,
     ]),
   ],
   controllers: [
@@ -45,6 +50,7 @@ import { MembersService } from './application/members.service';
     MembersController,
     LabelsController,
     CommentsController,
+    NotificationsController,
   ],
   providers: [
     BoardsService,
@@ -53,6 +59,8 @@ import { MembersService } from './application/members.service';
     MembersService,
     LabelsService,
     CommentsService,
+    NotificationsService,
+    DeadlineRemindersService,
     BoardsFacadeService,
     { provide: BOARDS_FACADE, useExisting: BoardsFacadeService },
   ],
