@@ -126,7 +126,6 @@ function setup(
     gateway,
   );
   const service = new JiraStatusSyncService(
-    facade,
     mappings,
     gateway,
     logs as unknown as Repository<SyncLogEntity>,
@@ -365,7 +364,7 @@ describe('JiraStatusSyncService', () => {
     gateway.doTransition.mockImplementation(async (input) => {
       const delay = ++calls === 1 ? 60 : 5;
       await new Promise((resolve) => setTimeout(resolve, delay));
-      jiraStatus = all.find((t) => t.id === input.transitionId)!.to;
+      jiraStatus = all.filter((t) => t.id === input.transitionId)[0].to;
     });
 
     await Promise.all([

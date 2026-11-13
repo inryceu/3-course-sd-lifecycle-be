@@ -1,8 +1,14 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DomainEventOf } from '../../../common/events/domain-events';
-import { BOARDS_FACADE, BoardsFacade } from '../../boards';
 import {
   JiraClientError,
   JiraGatewayError,
@@ -52,6 +58,7 @@ class SyncFailure extends Error {
   constructor(
     readonly reason: FailureReason,
     message: string = reason,
+    readonly extra: Record<string, unknown> = {},
   ) {
     super(message);
     this.name = 'SyncFailure';
@@ -62,9 +69,10 @@ class SyncFailure extends Error {
 @Injectable()
 export class JiraStatusSyncService {
   private readonly logger = new Logger(JiraStatusSyncService.name);
+  // ponytail: in-process only; T-35 per-card ordering (outbox) replaces it across processes.
+  private readonly chains = new Map<string, Promise<void>>();
 
   constructor(
-    @Inject(BOARDS_FACADE) private readonly boards: BoardsFacade,
     private readonly statusMappings: JiraStatusMappingService,
     @Inject(JIRA_GATEWAY) private readonly gateway: JiraGateway,
     @InjectRepository(SyncLogEntity)
@@ -83,6 +91,21 @@ export class JiraStatusSyncService {
       return;
     }
 
+    // Runs for one issue go one after another, so a later move reads Jira after the earlier
+    // transition landed instead of racing it and leaving Jira in the older status.
+    const key = `${event.boardId}:${issueKey}`;
+    const next = (this.chains.get(key) ?? Promise.resolve()).then(() =>
+      this.syncOne(event, issueKey),
+    );
+    const settled = next.catch((): void => undefined);
+    this.chains.set(key, settled);
+    void settled.then(() => {
+      if (this.chains.get(key) === settled) this.chains.delete(key);
+    });
+    return next;
+  }
+
+  private async syncOne(event: DomainEventOf<'card.moved'>, issueKey: string): Promise<void> {
     const startedAt = this.startedAt(event.occurredAt);
     const deadline = startedAt + SYNC_BUDGET_MS;
     const result = await this.run(event, issueKey, deadline);
@@ -94,12 +117,15 @@ export class JiraStatusSyncService {
       );
     }
     if (result.status === SyncStatus.FAILED) {
+      const what = result.payload.outcome === 'unknown' ? 'outcome unknown' : 'failed';
       this.logger.error(
-        `Jira status sync failed for ${issueKey} on board ${event.boardId}: ${result.reason ?? 'sync failed'}`,
+        `Jira status sync ${what} for ${issueKey} on board ${event.boardId}: ${result.reason ?? 'sync failed'}`,
         result.errorMessage ?? undefined,
       );
     } else {
-      this.logger.debug(`Jira status sync for ${issueKey} on board ${event.boardId} completed`);
+      this.logger.log(
+        `Jira status sync for ${issueKey} on board ${event.boardId} completed in ${latencyMs}ms`,
+      );
     }
 
     await this.logs.save({
@@ -171,7 +197,18 @@ export class JiraStatusSyncService {
       }
 
       const chosen = candidates[0];
-      await this.doTransition(event.boardId, issueKey, chosen.transition.id, deadline);
+      try {
+        await this.doTransition(event.boardId, issueKey, chosen.transition.id, deadline);
+      } catch (error) {
+        // The POST was sent and aborted: Jira may have applied it.
+        if (error instanceof JiraTimeoutError) {
+          throw new SyncFailure('deadline exceeded', error.message, {
+            outcome: 'unknown',
+            transitionId: chosen.transition.id,
+          });
+        }
+        throw error;
+      }
       return {
         status: SyncStatus.SUCCESS,
         payload: {
@@ -197,6 +234,7 @@ export class JiraStatusSyncService {
           fromColumnId,
           toColumnId,
           reason: failure.reason,
+          ...failure.extra,
         },
         errorMessage: failure.message,
         mappingId,
@@ -206,14 +244,18 @@ export class JiraStatusSyncService {
   }
 
   private async resolveLinkedBoard(boardId: string): Promise<LinkedBoard> {
-    const board = await this.boards.getBoardSummary(boardId);
-    if (board === null || board.jiraProjectKey === null) {
-      throw new SyncFailure('board not linked', 'Board is not linked to a Jira project');
-    }
     try {
       return await this.statusMappings.requireLinkedBoard(boardId);
     } catch (error) {
-      throw new SyncFailure('board not linked', this.message(error));
+      // Only the missing / not connected / not linked answers; a DB error stays `sync failed`.
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ConflictException ||
+        error instanceof BadRequestException
+      ) {
+        throw new SyncFailure('board not linked', this.message(error));
+      }
+      throw error;
     }
   }
 
@@ -311,9 +353,13 @@ export class JiraStatusSyncService {
     return Number.isNaN(parsed) ? Date.now() : parsed;
   }
 
-  private failureFrom(error: unknown): { reason: FailureReason; message: string } {
+  private failureFrom(error: unknown): {
+    reason: FailureReason;
+    message: string;
+    extra?: Record<string, unknown>;
+  } {
     if (error instanceof SyncFailure) {
-      return { reason: error.reason, message: error.message };
+      return { reason: error.reason, message: error.message, extra: error.extra };
     }
     if (error instanceof JiraTimeBudgetExceededError || error instanceof JiraTimeoutError) {
       return { reason: 'deadline exceeded', message: this.message(error) };
