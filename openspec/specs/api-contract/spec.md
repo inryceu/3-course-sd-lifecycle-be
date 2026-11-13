@@ -61,3 +61,10 @@ Every operation implemented by the backend SHALL use the path, method, status co
 #### Scenario: Frontend types
 - **WHEN** the frontend regenerates its types from the spec
 - **THEN** `JiraImportResult`, `JiraStatusMapping` and `PutJiraStatusMappingsRequest` are available
+
+### Requirement: Jira project listing operation
+`docs/api/openapi.yaml` SHALL describe `GET /jira/projects` with the `boardId` query parameter, answering an array of `JiraProject` (`id`, `key`, `name`), and 404, 409, 429 and 502 errors.
+
+#### Scenario: Frontend types
+- **WHEN** the frontend regenerates its types from the spec
+- **THEN** `JiraProject` is available

@@ -116,8 +116,8 @@ export class JiraStatusMappingService {
     return role;
   }
 
-  /** The board must be connected to Jira and (unless `projectKey` is given) linked to a project. */
-  async requireLinkedBoard(boardId: string, projectKey?: string): Promise<LinkedBoard> {
+  /** The board must exist (404) and be connected to Jira (409). */
+  async requireConnectedBoard(boardId: string): Promise<BoardSummary> {
     const board = await this.boards.getBoardSummary(boardId);
     if (!board) {
       throw new NotFoundException('Board not found');
@@ -125,6 +125,12 @@ export class JiraStatusMappingService {
     if (!(await this.connections.exist({ where: { boardId } }))) {
       throw new ConflictException('Connect this board to Jira first');
     }
+    return board;
+  }
+
+  /** The board must be connected to Jira and (unless `projectKey` is given) linked to a project. */
+  async requireLinkedBoard(boardId: string, projectKey?: string): Promise<LinkedBoard> {
+    const board = await this.requireConnectedBoard(boardId);
     const key = projectKey ?? board.jiraProjectKey;
     if (!key) {
       throw new BadRequestException('Link the board to a Jira project first (projectKey)');

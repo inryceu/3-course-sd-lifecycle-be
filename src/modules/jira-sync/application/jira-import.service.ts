@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { BOARDS_FACADE, BoardsFacade } from '../../boards';
 import { JiraIssueMappingEntity } from '../infrastructure/persistence/jira-issue-mapping.entity';
 import { adfToPlainText } from './helpers/adf-to-plain-text';
-import { JIRA_GATEWAY, JiraGateway } from './jira-gateway.port';
+import { JIRA_GATEWAY, JiraGateway, JiraProject } from './jira-gateway.port';
 import { toHttpError } from './jira-errors.mapper';
 import { JiraStatusMappingService } from './jira-status-mapping.service';
 
@@ -89,6 +89,18 @@ export class JiraImportService {
     } while (nextPageToken);
 
     return result;
+  }
+
+  /** Projects the board's connection can see, sorted by name; any member may read them. */
+  async listProjects(userId: string, boardId: string): Promise<JiraProject[]> {
+    await this.statusMappings.requireRole(userId, boardId, false);
+    await this.statusMappings.requireConnectedBoard(boardId);
+    try {
+      const projects = await this.gateway.listProjects({ boardId });
+      return [...projects].sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error) {
+      throw toHttpError(error);
+    }
   }
 
   /** Card ↔ issue links of a board; any member may read them. */

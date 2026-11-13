@@ -13,6 +13,8 @@ export const DEFAULT_SEARCH_FIELDS = [
 
 /** Typed operations against the Jira Cloud REST API v3 for one board connection. */
 export interface JiraGateway {
+  /** Lists every project visible to the connection, reading all result pages. */
+  listProjects(input: ListProjectsInput): Promise<JiraProject[]>;
   /** Lists every status used by the project's issue types, once each. */
   listProjectStatuses(input: ListProjectStatusesInput): Promise<JiraStatus[]>;
   /** Searches issues with JQL. Caller fields are merged with `DEFAULT_SEARCH_FIELDS`. */
@@ -31,6 +33,22 @@ export interface JiraGateway {
   listWebhooks(input: ListWebhooksInput): Promise<ListWebhooksResult>;
   /** Extends the expiration of registered dynamic webhooks. */
   refreshWebhooks(input: RefreshWebhooksInput): Promise<RefreshWebhooksResult>;
+}
+
+/** Input for listing the projects of the connected site. */
+export interface ListProjectsInput {
+  /** Board whose Jira connection supplies the cloud id and token. */
+  readonly boardId: string;
+}
+
+/** A Jira project as the project picker needs it. */
+export interface JiraProject {
+  /** Numeric project id as a string. */
+  readonly id: string;
+  /** Project key, e.g. `KAN`. */
+  readonly key: string;
+  /** Display name. */
+  readonly name: string;
 }
 
 /** Input for listing the statuses of a project. */

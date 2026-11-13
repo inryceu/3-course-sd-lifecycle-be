@@ -1097,6 +1097,68 @@ describe('JiraGatewayHttpClient retries', () => {
   });
 });
 
+describe('JiraGatewayHttpClient.listProjects', () => {
+  const project = (id: string, key: string, name: string) => ({
+    id,
+    key,
+    name,
+    self: `https://jira/project/${id}`,
+    projectTypeKey: 'software',
+  });
+
+  it('follows the offset pagination until isLast and returns id, key and name', async () => {
+    respond = (request) =>
+      query(request).get('startAt') === '0'
+        ? {
+            status: 200,
+            body: {
+              startAt: 0,
+              maxResults: 2,
+              isLast: false,
+              values: [project('1', 'KAN', 'Kanban'), project('2', 'OPS', 'Ops')],
+            },
+          }
+        : {
+            status: 200,
+            body: { startAt: 2, maxResults: 2, isLast: true, values: [project('3', 'WEB', 'Web')] },
+          };
+    const { client } = setup();
+
+    const result = await client.listProjects({ boardId: BOARD });
+
+    expect(result).toEqual([
+      { id: '1', key: 'KAN', name: 'Kanban' },
+      { id: '2', key: 'OPS', name: 'Ops' },
+      { id: '3', key: 'WEB', name: 'Web' },
+    ]);
+    expect(requests.map((r) => r.url.split('?')[0])).toEqual([
+      `/ex/jira/${CLOUD}/rest/api/3/project/search`,
+      `/ex/jira/${CLOUD}/rest/api/3/project/search`,
+    ]);
+    expect(requests.map((r) => query(r).get('startAt'))).toEqual(['0', '2']);
+    expect(query(requests[0]).get('maxResults')).toBe('50');
+  });
+
+  it('stops on an empty page even when isLast is false', async () => {
+    respond = () => ({ status: 200, body: { isLast: false, values: [] } });
+    const { client } = setup();
+
+    await expect(client.listProjects({ boardId: BOARD })).resolves.toEqual([]);
+    expect(requests).toHaveLength(1);
+  });
+
+  it('rejects without read:jira-work before calling Jira', async () => {
+    respond = () => ({ status: 200, body: { isLast: true, values: [] } });
+    const { client } = setup({ connection: makeConnection({ scopes: ['write:jira-work'] }) });
+
+    await expect(client.listProjects({ boardId: BOARD })).rejects.toMatchObject({
+      status: 403,
+      providerError: 'missing_scope',
+    });
+    expect(requests).toHaveLength(0);
+  });
+});
+
 describe('JiraGatewayHttpClient.listProjectStatuses', () => {
   const status = (id: string, name: string, key: string) => ({
     id,
