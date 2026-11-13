@@ -15,6 +15,7 @@ function setup(role: BoardRole | null, connection: Partial<JiraConnectionEntity>
     setJiraProjectKey: jest.fn(),
     upsertCardFromExternal: jest.fn(),
     moveCardFromExternal: jest.fn(),
+    notifyBoardAdmins: jest.fn(),
   };
   const webhooks = { removeForBoard: jest.fn().mockResolvedValue(undefined) };
   const service = new JiraConnectionService(

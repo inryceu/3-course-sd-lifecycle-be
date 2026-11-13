@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DomainEventOf } from '../../../common/events/domain-events';
+import { BOARDS_FACADE, BoardsFacade } from '../../boards';
 import {
   JiraClientError,
   JiraGatewayError,
@@ -27,6 +28,7 @@ import {
   LinkedBoard,
   StatusMappingView,
 } from './jira-status-mapping.service';
+import { JiraSyncConflictDetector } from './jira-sync-conflict.detector';
 
 const SYNC_BUDGET_MS = 5_000;
 const MIN_CALL_BUDGET_MS = 250;
@@ -47,6 +49,32 @@ interface SyncLogResult {
   readonly errorMessage: string | null;
   readonly mappingId: string | null;
   readonly reason?: FailureReason;
+}
+
+/** One outbound attempt: the card's issue should end in the status of `toColumnId`. */
+interface MoveRequest {
+  readonly boardId: string;
+  readonly cardId: string;
+  readonly issueKey: string;
+  readonly fromColumnId: string;
+  readonly toColumnId: string;
+  /** ISO time of the move; starts the five-second budget and is the move's conflict time. */
+  readonly occurredAt: string;
+  /** False for an admin's conflict resolution, which overrides Jira on purpose. */
+  readonly checkConflicts: boolean;
+}
+
+export interface PushRequest {
+  readonly boardId: string;
+  readonly cardId: string;
+  readonly issueKey: string;
+  readonly fromColumnId: string;
+  readonly toColumnId: string;
+}
+
+export interface PushResult {
+  readonly status: SyncStatus;
+  readonly reason: string | null;
 }
 
 interface TransitionCandidate {
@@ -79,6 +107,8 @@ export class JiraStatusSyncService {
     private readonly logs: Repository<SyncLogEntity>,
     @InjectRepository(JiraIssueMappingEntity)
     private readonly links: Repository<JiraIssueMappingEntity>,
+    private readonly conflicts: JiraSyncConflictDetector,
+    @Inject(BOARDS_FACADE) private readonly boards: BoardsFacade,
   ) {}
 
   async syncCardMove(event: DomainEventOf<'card.moved'>): Promise<void> {
@@ -91,13 +121,41 @@ export class JiraStatusSyncService {
       return;
     }
 
-    // Runs for one issue go one after another, so a later move reads Jira after the earlier
-    // transition landed instead of racing it and leaving Jira in the older status.
-    const key = `${event.boardId}:${issueKey}`;
-    const next = (this.chains.get(key) ?? Promise.resolve()).then(() =>
-      this.syncOne(event, issueKey),
+    await this.enqueue({
+      boardId: event.boardId,
+      cardId: event.payload.card.id,
+      issueKey,
+      fromColumnId: event.payload.fromColumnId,
+      toColumnId: event.payload.toColumnId,
+      occurredAt: event.occurredAt,
+      checkConflicts: true,
+    });
+  }
+
+  /**
+   * Sends a column to Jira on an admin's behalf (conflict resolution "push BoardSync version"):
+   * the same attempt as a user move, with its sync-log row, but without the conflict check.
+   */
+  async push(request: PushRequest): Promise<PushResult> {
+    const result = await this.enqueue({
+      ...request,
+      occurredAt: new Date().toISOString(),
+      checkConflicts: false,
+    });
+    return { status: result.status, reason: result.reason ?? null };
+  }
+
+  /**
+   * Runs for one issue go one after another, so a later move reads Jira after the earlier
+   * transition landed instead of racing it and leaving Jira in the older status.
+   */
+  private enqueue(request: MoveRequest): Promise<SyncLogResult> {
+    const key = `${request.boardId}:${request.issueKey}`;
+    const next = (this.chains.get(key) ?? Promise.resolve()).then(() => this.syncOne(request));
+    const settled = next.then(
+      (): void => undefined,
+      (): void => undefined,
     );
-    const settled = next.catch((): void => undefined);
     this.chains.set(key, settled);
     void settled.then(() => {
       if (this.chains.get(key) === settled) this.chains.delete(key);
@@ -105,26 +163,29 @@ export class JiraStatusSyncService {
     return next;
   }
 
-  private async syncOne(event: DomainEventOf<'card.moved'>, issueKey: string): Promise<void> {
-    const startedAt = this.startedAt(event.occurredAt);
+  private async syncOne(request: MoveRequest): Promise<SyncLogResult> {
+    const { issueKey, boardId } = request;
+    const startedAt = this.startedAt(request.occurredAt);
     const deadline = startedAt + SYNC_BUDGET_MS;
-    const result = await this.run(event, issueKey, deadline);
+    const result = await this.run(request, deadline);
     const latencyMs = Math.max(0, Date.now() - startedAt);
 
     if (latencyMs > SYNC_BUDGET_MS) {
-      this.logger.warn(
-        `Jira status sync for ${issueKey} on board ${event.boardId} took ${latencyMs}ms`,
-      );
+      this.logger.warn(`Jira status sync for ${issueKey} on board ${boardId} took ${latencyMs}ms`);
     }
     if (result.status === SyncStatus.FAILED) {
       const what = result.payload.outcome === 'unknown' ? 'outcome unknown' : 'failed';
       this.logger.error(
-        `Jira status sync ${what} for ${issueKey} on board ${event.boardId}: ${result.reason ?? 'sync failed'}`,
+        `Jira status sync ${what} for ${issueKey} on board ${boardId}: ${result.reason ?? 'sync failed'}`,
         result.errorMessage ?? undefined,
+      );
+    } else if (result.status === SyncStatus.CONFLICT) {
+      this.logger.warn(
+        `Jira status sync for ${issueKey} on board ${boardId} not sent: sync conflict, Jira wins`,
       );
     } else {
       this.logger.log(
-        `Jira status sync for ${issueKey} on board ${event.boardId} completed in ${latencyMs}ms`,
+        `Jira status sync for ${issueKey} on board ${boardId} completed in ${latencyMs}ms`,
       );
     }
 
@@ -135,24 +196,53 @@ export class JiraStatusSyncService {
       errorMessage: result.errorMessage,
       mappingId: result.mappingId,
     });
+    return result;
   }
 
-  private async run(
-    event: DomainEventOf<'card.moved'>,
-    issueKey: string,
-    deadline: number,
-  ): Promise<SyncLogResult> {
-    const { card, fromColumnId, toColumnId } = event.payload;
+  private async run(request: MoveRequest, deadline: number): Promise<SyncLogResult> {
+    const { boardId, issueKey, fromColumnId, toColumnId } = request;
+    const card = { id: request.cardId };
+    const move = { columnId: toColumnId, at: new Date(this.startedAt(request.occurredAt)) };
     let mappingId: string | null = null;
+    const conflict = (extra: Record<string, unknown> = {}): SyncLogResult => ({
+      status: SyncStatus.CONFLICT,
+      payload: {
+        cardId: card.id,
+        issueKey,
+        fromColumnId,
+        toColumnId,
+        outcome: 'conflict',
+        ...extra,
+      },
+      errorMessage: null,
+      mappingId,
+    });
 
     try {
-      mappingId = await this.findMappingId(event.boardId, issueKey);
-      const linked = await this.resolveLinkedBoard(event.boardId);
+      mappingId = await this.findMappingId(boardId, issueKey);
+      if (request.checkConflicts && mappingId !== null) {
+        const ref = { linkId: mappingId, boardId, cardId: card.id, issueKey };
+        const lost = await this.conflicts.noteBoardMove(ref, move);
+        if (lost) {
+          // Jira wins: the move is not sent and the card goes back to the Jira status's column.
+          await this.boards.moveCardFromExternal({
+            boardId,
+            jiraIssueKey: issueKey,
+            columnId: lost.jira.columnId,
+          });
+          await this.conflicts.record(lost);
+          return conflict({
+            jiraColumnId: lost.jira.columnId,
+            jiraStatusName: lost.jira.statusName,
+          });
+        }
+      }
+      const linked = await this.resolveLinkedBoard(boardId);
       if (!ISSUE_KEY_PATTERN.test(issueKey)) {
         throw new SyncFailure('invalid issue key', `"${issueKey}" is not a Jira issue key`);
       }
 
-      const issue = await this.getIssue(event.boardId, issueKey, deadline);
+      const issue = await this.getIssue(boardId, issueKey, deadline);
       const [current] = await this.statusMappings.resolveMappings(linked, [issue.status]);
       if (current.columnId === toColumnId) {
         return {
@@ -171,7 +261,7 @@ export class JiraStatusSyncService {
         };
       }
 
-      const transitions = await this.listTransitions(event.boardId, issueKey, deadline);
+      const transitions = await this.listTransitions(boardId, issueKey, deadline);
       const targets = this.uniqueTargets(transitions);
       const targetMappings = await this.statusMappings.resolveMappings(linked, targets);
       const mappingByStatusId = new Map(
@@ -197,8 +287,16 @@ export class JiraStatusSyncService {
       }
 
       const chosen = candidates[0];
+      // A conflicting Jira change may have been recorded while this attempt waited; Jira wins.
+      if (
+        request.checkConflicts &&
+        mappingId !== null &&
+        (await this.conflicts.hasConflictingJiraChange(mappingId, move))
+      ) {
+        return conflict();
+      }
       try {
-        await this.doTransition(event.boardId, issueKey, chosen.transition.id, deadline);
+        await this.doTransition(boardId, issueKey, chosen.transition.id, deadline);
       } catch (error) {
         // The POST was sent and aborted: Jira may have applied it.
         if (error instanceof JiraTimeoutError) {

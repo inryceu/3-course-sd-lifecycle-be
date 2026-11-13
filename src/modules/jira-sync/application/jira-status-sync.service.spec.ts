@@ -14,6 +14,7 @@ import {
 import { JiraGateway, JiraStatus, JiraTransition } from './jira-gateway.port';
 import { JiraStatusMappingService } from './jira-status-mapping.service';
 import { JiraStatusSyncService } from './jira-status-sync.service';
+import { JiraSyncConflictDetector } from './jira-sync-conflict.detector';
 
 const status = (id: string, name: string, key: string): JiraStatus => ({
   id,
@@ -97,6 +98,7 @@ function setup(
       .fn()
       .mockResolvedValue(options.boardSummary === undefined ? board : options.boardSummary),
     getMemberRole: jest.fn().mockResolvedValue(BoardRole.ADMIN),
+    moveCardFromExternal: jest.fn().mockResolvedValue('moved'),
   } as unknown as jest.Mocked<BoardsFacade>;
   const gateway = {
     getIssue: jest.fn().mockResolvedValue({ id: '10001', key: 'KAN-1', status: TODO }),
@@ -119,6 +121,11 @@ function setup(
   const logs = {
     save: jest.fn().mockResolvedValue(undefined),
   };
+  const conflicts = {
+    noteBoardMove: jest.fn().mockResolvedValue(null),
+    hasConflictingJiraChange: jest.fn().mockResolvedValue(false),
+    record: jest.fn().mockResolvedValue(undefined),
+  };
   const mappings = new JiraStatusMappingService(
     statusRepo as unknown as Repository<JiraStatusMappingEntity>,
     connections as unknown as Repository<JiraConnectionEntity>,
@@ -130,8 +137,10 @@ function setup(
     gateway,
     logs as unknown as Repository<SyncLogEntity>,
     links as unknown as Repository<JiraIssueMappingEntity>,
+    conflicts as unknown as JiraSyncConflictDetector,
+    facade,
   );
-  return { service, facade, gateway, statusRepo, connections, links, logs };
+  return { service, facade, gateway, statusRepo, connections, links, logs, conflicts };
 }
 
 describe('JiraStatusSyncService', () => {
@@ -456,5 +465,109 @@ describe('JiraStatusSyncService', () => {
     expect(reorder.logs.save).not.toHaveBeenCalled();
     expect(unlinked.logs.save).not.toHaveBeenCalled();
     expect(user.logs.save).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('JiraStatusSyncService conflicts', () => {
+  const lost = {
+    linkId: 'mapping-1',
+    boardId: 'b1',
+    cardId: 'card-1',
+    issueKey: 'KAN-1',
+    board: { columnId: 'col-done', at: new Date() },
+    jira: { columnId: 'col-doing', statusName: 'In Progress', at: new Date() },
+  };
+
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('notes every user move of a mapped card with its destination and time', async () => {
+    const { service, conflicts } = setup({ linkId: 'mapping-1' });
+    const event = makeEvent();
+
+    await service.syncCardMove(event);
+
+    expect(conflicts.noteBoardMove).toHaveBeenCalledWith(
+      { linkId: 'mapping-1', boardId: 'b1', cardId: 'card-1', issueKey: 'KAN-1' },
+      { columnId: 'col-done', at: new Date(event.occurredAt) },
+    );
+  });
+
+  it('a move that loses sends nothing, moves the card back, records the conflict and logs CONFLICT', async () => {
+    const { service, conflicts, gateway, facade, logs } = setup({ linkId: 'mapping-1' });
+    conflicts.noteBoardMove.mockResolvedValue(lost);
+
+    await service.syncCardMove(makeEvent());
+
+    expect(gateway.getIssue).not.toHaveBeenCalled();
+    expect(gateway.doTransition).not.toHaveBeenCalled();
+    expect(facade.moveCardFromExternal).toHaveBeenCalledWith({
+      boardId: 'b1',
+      jiraIssueKey: 'KAN-1',
+      columnId: 'col-doing',
+    });
+    expect(conflicts.record).toHaveBeenCalledWith(lost);
+    expect(logs.save).toHaveBeenCalledTimes(1);
+    expect(logs.save.mock.calls[0][0]).toMatchObject({
+      status: SyncStatus.CONFLICT,
+      mappingId: 'mapping-1',
+      payload: { outcome: 'conflict', toColumnId: 'col-done', jiraColumnId: 'col-doing' },
+    });
+  });
+
+  it('does not send a pending transition once a conflicting Jira change was recorded', async () => {
+    const { service, conflicts, gateway, facade, logs } = setup({ linkId: 'mapping-1' });
+    conflicts.hasConflictingJiraChange.mockResolvedValue(true);
+
+    await service.syncCardMove(makeEvent());
+
+    expect(gateway.doTransition).not.toHaveBeenCalled();
+    expect(facade.moveCardFromExternal).not.toHaveBeenCalled();
+    expect(conflicts.record).not.toHaveBeenCalled();
+    expect(logs.save.mock.calls[0][0]).toMatchObject({
+      status: SyncStatus.CONFLICT,
+      payload: { outcome: 'conflict' },
+    });
+  });
+
+  it('push() skips the conflict check and returns the attempt status', async () => {
+    const { service, conflicts, gateway, logs } = setup({ linkId: 'mapping-1' });
+    conflicts.hasConflictingJiraChange.mockResolvedValue(true);
+
+    const result = await service.push({
+      boardId: 'b1',
+      cardId: 'card-1',
+      issueKey: 'KAN-1',
+      fromColumnId: 'col-doing',
+      toColumnId: 'col-done',
+    });
+
+    expect(result).toEqual({ status: SyncStatus.SUCCESS, reason: null });
+    expect(conflicts.noteBoardMove).not.toHaveBeenCalled();
+    expect(gateway.doTransition).toHaveBeenCalledTimes(1);
+    expect(logs.save.mock.calls[0][0]).toMatchObject({
+      status: SyncStatus.SUCCESS,
+      payload: { outcome: 'transitioned' },
+    });
+  });
+
+  it('push() reports the failure reason', async () => {
+    const { service, gateway } = setup({ linkId: 'mapping-1' });
+    gateway.doTransition.mockRejectedValue(new JiraServerError(503, 1, 1));
+
+    await expect(
+      service.push({
+        boardId: 'b1',
+        cardId: 'card-1',
+        issueKey: 'KAN-1',
+        fromColumnId: 'col-doing',
+        toColumnId: 'col-done',
+      }),
+    ).resolves.toEqual({ status: SyncStatus.FAILED, reason: 'jira error' });
   });
 });

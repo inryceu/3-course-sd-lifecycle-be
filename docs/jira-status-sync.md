@@ -73,7 +73,7 @@ For T-25, "surfaced" means two things, and nothing more:
 1. a `Logger.error` line `Jira status sync failed for <key> on board <id>: <reason>` (or `outcome unknown` for a timed-out transition) with the error message, and
 2. the `FAILED` `TO_JIRA` row in `sync_logs` with the stable `reason`.
 
-This was the PM's decision on the PR #61 review. Nothing in the product reads these rows yet, so a board user is not told when Jira did not follow a move. A user-facing surface (a read API or a notification to the mover) is a follow-up for T-34/T-35. `sync_logs` has no `board_id`; failed rows are found through `payload->>'cardId'` and `payload->>'issueKey'` until that follow-up adds the column.
+This was the PM's decision on the PR #61 review. Nothing in the product reads these rows yet, so a board user is not told when Jira did not follow a move. A user-facing surface for failures (a read API or a notification to the mover) is a follow-up for T-35; T-34 covers conflicts only. `sync_logs` has no `board_id`; failed rows are found through `payload->>'cardId'` and `payload->>'issueKey'` until that follow-up adds the column.
 
 ## `sync_logs` rows
 
@@ -147,10 +147,54 @@ Common row fields:
 }
 ```
 
+### Conflict (the move lost a sync conflict)
+
+```json
+{
+  "direction": "TO_JIRA",
+  "status": "CONFLICT",
+  "mappingId": "<jira_issue_mappings.id>",
+  "errorMessage": null,
+  "payload": {
+    "cardId": "<card id>",
+    "issueKey": "KAN-1",
+    "fromColumnId": "<source column id>",
+    "toColumnId": "<destination column id>",
+    "outcome": "conflict",
+    "jiraColumnId": "<column of the Jira status>",
+    "jiraStatusName": "In Progress",
+    "latencyMs": 35
+  }
+}
+```
+
+`jiraColumnId`/`jiraStatusName` are present when this attempt detected the conflict; they are absent when the webhook path detected it while the transition was still pending.
+
+## Sync conflicts (T-34, FR-13)
+
+Code: `jira-sync-conflict.detector.ts` (detection), `jira-sync-conflicts.service.ts` + `presentation/jira-conflicts.controller.ts` (list/resolve). Design: `openspec/changes/archive/2026-11-13-jira-sync-conflicts/design.md`.
+
+**Window.** A *user move* (`card.moved`, origin `user`, column change; time = `occurredAt`) and a *Jira change* (accepted status delivery; time = webhook `timestamp`, or receipt time) of the same linked card conflict when they are at most **5000 ms** apart, in either order, and the Jira status maps to a different column than the user's destination. A delivery whose status BoardSync itself transitioned the issue to (a `SUCCESS`/`transitioned` row for that status logged no earlier than 5 s before the change) is an echo and never counts.
+
+Each side records its latest change on `jira_issue_mappings` (`last_board_move_at`/`last_board_column_id`, `last_jira_change_at`/`last_jira_column_id`/`last_jira_status_name`) and reads the other side's in one row-locked statement, so exactly the side processed second detects the conflict.
+
+**Jira wins.**
+
+| Processed second | What happens |
+|---|---|
+| Jira change (webhook) | The card moves to the Jira column as for any delivery; the conflict is logged. A transition for the user move that has not been sent yet is skipped (`CONFLICT` row). |
+| User move (outbound attempt) | No Jira call; the card is moved back to the Jira column (`card.moved`, origin `jira`); `CONFLICT` row; the conflict is logged. |
+
+Every conflict is a `sync_conflict_log` row (resolution `jira`, `resolved_at` null) and one `jira.conflict` notification per board Admin (`notification.created`, delivered to `user:{id}`).
+
+**Resolution** (`POST /jira/conflicts/{id}/resolve`, Admin): `jira` reads the issue's current status and moves the card to its column (no Jira write); `boardsync` runs `JiraStatusSyncService.push()` to the conflict's BoardSync column (same chain, budget and `sync_logs` row as a user move, without the conflict check) and on success moves the card there. The conflict is claimed first, so it resolves once (409 afterwards); a Jira failure answers 502 and reopens it.
+
+**Known limit.** If BoardSync's transition reached Jira *before* a concurrent Jira edit was delivered, Jira's own order decides its final status (the later write); the conflict is still logged and the admin decides.
+
 ## Known limitations
 
 - **At-most-once delivery.** The in-process event bus does not provide an outbox. A process crash after the move commits can lose the attempt; only attempts that start are recorded.
 - **Ordering is per process.** Moves of one card are ordered inside one process only (see *Ordering per issue*). Across instances Jira applies whichever request reaches it last, and once inbound sync (KAN-37) is live the resulting webhooks move the card back on the board. T-35 owns cross-process per-card ordering.
 - **A failed log write leaves only an error log.** The move has already succeeded. The service rejects when `sync_logs.save()` fails, and the listener reports it with `Logger.error`; no `sync_logs` row remains.
-- **No read API for sync logs yet.** Failures reach only the server log and `sync_logs` (see *How failures are surfaced*); T-34/T-35 add the user-facing side.
+- **No read API for sync logs yet.** Failures reach only the server log and `sync_logs` (see *How failures are surfaced*). T-34 surfaces conflicts only (see *Sync conflicts*); failed attempts remain a T-35 follow-up.
 - **No transition retries and no multi-step paths.** A rejected transition is recorded and left for a later attempt triggered by another move.

@@ -8,6 +8,8 @@ import { JiraImportService } from './application/jira-import.service';
 import { JiraStatusMappingService } from './application/jira-status-mapping.service';
 import { JiraStatusSyncListener } from './application/jira-status-sync.listener';
 import { JiraStatusSyncService } from './application/jira-status-sync.service';
+import { JiraSyncConflictDetector } from './application/jira-sync-conflict.detector';
+import { JiraSyncConflictsService } from './application/jira-sync-conflicts.service';
 import { JiraOAuthService } from './application/jira-oauth.service';
 import { JiraWebhookAuthenticityService } from './application/jira-webhook-authenticity.service';
 import { JiraWebhookDeliveryService } from './application/jira-webhook-delivery.service';
@@ -26,7 +28,9 @@ import { JiraOAuthStateEntity } from './infrastructure/persistence/jira-oauth-st
 import { JiraStatusMappingEntity } from './infrastructure/persistence/jira-status-mapping.entity';
 import { JiraWebhookDeliveryEntity } from './infrastructure/persistence/jira-webhook-delivery.entity';
 import { JiraWebhookEntity } from './infrastructure/persistence/jira-webhook.entity';
+import { SyncConflictLogEntity } from './infrastructure/persistence/sync-conflict-log.entity';
 import { SyncLogEntity } from './infrastructure/persistence/sync-log.entity';
+import { JiraConflictsController } from './presentation/jira-conflicts.controller';
 import { JiraImportController } from './presentation/jira-import.controller';
 import { JiraOAuthController } from './presentation/jira-oauth.controller';
 import { JiraWebhookController } from './presentation/jira-webhook.controller';
@@ -45,9 +49,15 @@ import { BoardsModule } from '../boards';
       JiraWebhookDeliveryEntity,
       JiraWebhookEntity,
       SyncLogEntity,
+      SyncConflictLogEntity,
     ]),
   ],
-  controllers: [JiraOAuthController, JiraImportController, JiraWebhookController],
+  controllers: [
+    JiraOAuthController,
+    JiraImportController,
+    JiraWebhookController,
+    JiraConflictsController,
+  ],
   providers: [
     JiraOAuthService,
     JiraConnectionService,
@@ -55,6 +65,8 @@ import { BoardsModule } from '../boards';
     JiraStatusMappingService,
     JiraStatusSyncService,
     JiraStatusSyncListener,
+    JiraSyncConflictDetector,
+    JiraSyncConflictsService,
     JiraWebhookAuthenticityService,
     JiraWebhookDeliveryService,
     JiraWebhookLifecycleService,
