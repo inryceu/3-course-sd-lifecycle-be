@@ -6,6 +6,8 @@ import { JIRA_GATEWAY } from './application/jira-gateway.port';
 import { JiraConnectionService } from './application/jira-connection.service';
 import { JiraImportService } from './application/jira-import.service';
 import { JiraStatusMappingService } from './application/jira-status-mapping.service';
+import { JiraStatusSyncListener } from './application/jira-status-sync.listener';
+import { JiraStatusSyncService } from './application/jira-status-sync.service';
 import { JiraOAuthService } from './application/jira-oauth.service';
 import { TOKEN_CIPHER } from './application/token-cipher.port';
 import { AesGcmTokenCipher } from './infrastructure/aes-gcm-token-cipher';
@@ -42,6 +44,8 @@ import { BoardsModule } from '../boards';
     JiraConnectionService,
     JiraImportService,
     JiraStatusMappingService,
+    JiraStatusSyncService,
+    JiraStatusSyncListener,
     AesGcmTokenCipher,
     AtlassianOAuthHttpClient,
     JiraGatewayHttpClient,

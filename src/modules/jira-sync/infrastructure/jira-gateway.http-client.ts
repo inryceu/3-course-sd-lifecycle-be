@@ -14,6 +14,8 @@ import {
   DoTransitionInput,
   GetCommentsInput,
   GetCommentsResult,
+  GetIssueInput,
+  GetIssueResult,
   JiraComment,
   JiraGateway,
   JiraIssue,
@@ -83,6 +85,15 @@ interface RequestSpec {
   readonly scope: string;
   readonly body?: unknown;
   readonly idempotent: boolean;
+  readonly timeBudgetMs?: number;
+}
+
+interface GetIssueResponse {
+  readonly id: string;
+  readonly key: string;
+  readonly fields: {
+    readonly status: JiraStatus;
+  };
 }
 
 interface SearchIssuesResponse {
@@ -194,6 +205,17 @@ export class JiraGatewayHttpClient implements JiraGateway {
     };
   }
 
+  async getIssue(input: GetIssueInput): Promise<GetIssueResult> {
+    const issue = await this.requestJson<GetIssueResponse>(input.boardId, {
+      method: 'GET',
+      path: `${this.issuePath(input.issueIdOrKey)}?fields=status`,
+      scope: SCOPE_READ,
+      idempotent: true,
+      timeBudgetMs: input.timeBudgetMs,
+    });
+    return { id: issue.id, key: issue.key, status: issue.fields.status };
+  }
+
   async listTransitions(input: ListTransitionsInput): Promise<ListTransitionsResult> {
     const query = new URLSearchParams();
     if (input.expand !== undefined) {
@@ -212,6 +234,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
       path: `${this.issuePath(input.issueIdOrKey)}/transitions${suffix ? `?${suffix}` : ''}`,
       scope: SCOPE_READ,
       idempotent: true,
+      timeBudgetMs: input.timeBudgetMs,
     });
     return { transitions: result.transitions ?? [] };
   }
@@ -231,6 +254,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
       scope: SCOPE_WRITE,
       body,
       idempotent: false,
+      timeBudgetMs: input.timeBudgetMs,
     });
   }
 
@@ -320,8 +344,9 @@ export class JiraGatewayHttpClient implements JiraGateway {
   }
 
   private async requestJson<T>(boardId: string, spec: RequestSpec): Promise<T> {
-    const deadline = this.now() + this.timeBudgetMs;
-    this.assertBudget(deadline, 0);
+    const timeBudgetMs = this.effectiveTimeBudget(spec.timeBudgetMs);
+    const deadline = this.now() + timeBudgetMs;
+    this.assertBudget(deadline, 0, timeBudgetMs);
     const access = await this.ensureFreshAccessToken(boardId, spec.scope);
     const response = await this.execute(
       boardId,
@@ -329,6 +354,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
       access.accessToken,
       spec,
       deadline,
+      timeBudgetMs,
     );
     const text = await response.text();
     if (text.length === 0) {
@@ -342,8 +368,9 @@ export class JiraGatewayHttpClient implements JiraGateway {
   }
 
   private async requestNoContent(boardId: string, spec: RequestSpec): Promise<void> {
-    const deadline = this.now() + this.timeBudgetMs;
-    this.assertBudget(deadline, 0);
+    const timeBudgetMs = this.effectiveTimeBudget(spec.timeBudgetMs);
+    const deadline = this.now() + timeBudgetMs;
+    this.assertBudget(deadline, 0, timeBudgetMs);
     const access = await this.ensureFreshAccessToken(boardId, spec.scope);
     const response = await this.execute(
       boardId,
@@ -351,6 +378,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
       access.accessToken,
       spec,
       deadline,
+      timeBudgetMs,
     );
     if (response.status !== 204) {
       await this.drain(response);
@@ -364,6 +392,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
     initialAccessToken: string,
     spec: RequestSpec,
     deadline: number,
+    timeBudgetMs: number,
   ): Promise<Response> {
     let accessToken = initialAccessToken;
     let authRetried = false;
@@ -375,12 +404,12 @@ export class JiraGatewayHttpClient implements JiraGateway {
     const url = `${this.apiBase(cloudId)}${spec.path}`;
 
     for (;;) {
-      this.assertBudget(deadline, attempts);
+      this.assertBudget(deadline, attempts, timeBudgetMs);
       attempts += 1;
       const remaining = deadline - this.now();
       const timeout = Math.min(this.timeoutMs, remaining);
       if (timeout <= 0) {
-        throw new JiraTimeBudgetExceededError(this.timeBudgetMs, attempts - 1);
+        throw new JiraTimeBudgetExceededError(timeBudgetMs, attempts - 1);
       }
 
       const headers: Record<string, string> = {
@@ -422,7 +451,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
           if (rateLimitRetried || retryAfter === null || retryAfter > MAX_RETRY_AFTER_SECONDS) {
             throw new JiraRateLimitedError(retryAfter);
           }
-          await this.wait(retryAfter * 1000, deadline, attempts);
+          await this.wait(retryAfter * 1000, deadline, attempts, timeBudgetMs);
           rateLimitRetried = true;
           continue;
         }
@@ -436,7 +465,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
             throw new JiraServerError(response.status, serverAttempts, 3);
           }
           const delay = Math.min(1000 * 2 ** (serverAttempts - 1) * this.jitter(), 10_000);
-          await this.wait(delay, deadline, attempts);
+          await this.wait(delay, deadline, attempts, timeBudgetMs);
           continue;
         }
         throw await this.toClientError(response);
@@ -711,17 +740,29 @@ export class JiraGatewayHttpClient implements JiraGateway {
     return Math.max(0, Math.ceil((timestamp - this.now()) / 1000));
   }
 
-  private assertBudget(deadline: number, attempts: number): void {
+  private assertBudget(deadline: number, attempts: number, timeBudgetMs: number): void {
     if (this.now() >= deadline) {
-      throw new JiraTimeBudgetExceededError(this.timeBudgetMs, attempts);
+      throw new JiraTimeBudgetExceededError(timeBudgetMs, attempts);
     }
   }
 
-  private async wait(ms: number, deadline: number, attempts: number): Promise<void> {
+  private async wait(
+    ms: number,
+    deadline: number,
+    attempts: number,
+    timeBudgetMs: number,
+  ): Promise<void> {
     if (this.now() + ms > deadline) {
-      throw new JiraTimeBudgetExceededError(this.timeBudgetMs, attempts);
+      throw new JiraTimeBudgetExceededError(timeBudgetMs, attempts);
     }
     await this.sleep(ms);
+  }
+
+  private effectiveTimeBudget(requested: number | undefined): number {
+    if (requested === undefined) {
+      return this.timeBudgetMs;
+    }
+    return Math.min(requested, this.timeBudgetMs);
   }
 
   private issuePath(issueIdOrKey: string): string {
