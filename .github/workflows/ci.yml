@@ -131,21 +131,27 @@ jobs:
         run: |
           timeout 60 bash -c 'until pg_isready -h localhost -p 5432 -U postgres -d boardsync_test; do sleep 2; done'
 
-      - name: Run migrations
+      # Migration gate: every TypeORM migration must apply to an empty PostgreSQL 16 database
+      # (the `postgres` service container above) before any test runs.
+      - name: Run migrations against the Postgres service container
         run: pnpm migration:run
 
-      - name: Run unit tests
+      # Fails below the agreed thresholds: 70 % lines repo-wide (jest.config.js) and 85 % lines per
+      # auth/jira-sync application service (scripts/check-service-coverage.mjs).
+      - name: Run unit tests with coverage
         run: pnpm test:cov
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Run integration tests (real PostgreSQL)
         run: pnpm test:e2e
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        if: always()
-        with:
-          files: ./coverage/lcov.info
-          fail_ci_if_error: false
 
   build:
     name: Build
@@ -178,3 +184,23 @@ jobs:
           name: dist
           path: dist/
           retention-days: 7
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: production
+          push: false
+          tags: boardsync-backend:ci
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
