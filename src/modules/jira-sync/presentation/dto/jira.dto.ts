@@ -3,11 +3,15 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 
@@ -72,4 +76,24 @@ export class PutStatusMappingsDto {
   @ValidateNested({ each: true })
   @Type(() => StatusMappingEntryDto)
   mappings: StatusMappingEntryDto[];
+}
+
+export class ListConflictsQueryDto extends BoardQueryDto {
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 50 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @ApiPropertyOptional({ description: 'nextCursor of the previous page' })
+  @IsOptional()
+  @IsUUID()
+  cursor?: string;
+}
+
+export class ResolveConflictDto {
+  @ApiProperty({ enum: ['jira', 'boardsync'] })
+  @IsIn(['jira', 'boardsync'])
+  resolution: 'jira' | 'boardsync';
 }

@@ -39,7 +39,9 @@ function setup() {
     requireLinkedBoard: jest.fn().mockResolvedValue(LINKED),
     columnsByStatus: jest.fn().mockResolvedValue(new Map([['9', 'col-done']])),
   };
-  const gateway = { getIssue: jest.fn().mockResolvedValue({ id: '1', key: 'KAN-1', status: DONE }) };
+  const gateway = {
+    getIssue: jest.fn().mockResolvedValue({ id: '1', key: 'KAN-1', status: DONE }),
+  };
   const statusSync = {
     push: jest.fn().mockResolvedValue({ status: SyncStatus.SUCCESS, reason: null }),
   };
@@ -108,9 +110,9 @@ describe('JiraSyncConflictsService.resolve', () => {
     const ctx = setup();
     ctx.statusSync.push.mockResolvedValue({ status: SyncStatus.FAILED, reason: 'jira error' });
 
-    await expect(
-      ctx.service.resolve('admin-1', 'conflict-1', 'boardsync'),
-    ).rejects.toBeInstanceOf(BadGatewayException);
+    await expect(ctx.service.resolve('admin-1', 'conflict-1', 'boardsync')).rejects.toBeInstanceOf(
+      BadGatewayException,
+    );
 
     expect(ctx.boards.moveCardFromExternal).not.toHaveBeenCalled();
     expect(ctx.conflicts.update).toHaveBeenLastCalledWith(

@@ -1,6 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { ColumnType } from '../../boards';
-import { CONFLICT_WINDOW_MS, isConflict, JiraSyncConflictDetector } from './jira-sync-conflict.detector';
+import {
+  CONFLICT_WINDOW_MS,
+  isConflict,
+  JiraSyncConflictDetector,
+} from './jira-sync-conflict.detector';
 
 const T0 = new Date('2026-11-13T10:00:00.000Z');
 const at = (ms: number) => new Date(T0.getTime() + ms);

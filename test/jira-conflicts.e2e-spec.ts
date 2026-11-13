@@ -203,8 +203,10 @@ describe('Jira sync conflicts (e2e)', () => {
   };
 
   const columnOf = async (cardId: string): Promise<string> =>
-    ((await request(server).get(`${PREFIX}/cards/${cardId}`).set(bearer(admin)).expect(200))
-      .body as CardBody).columnId;
+    (
+      (await request(server).get(`${PREFIX}/cards/${cardId}`).set(bearer(admin)).expect(200))
+        .body as CardBody
+    ).columnId;
 
   const logsFor = async (cardId: string): Promise<SyncLogEntity[]> =>
     (await dataSource.getRepository(SyncLogEntity).find({ order: { createdAt: 'ASC' } })).filter(

@@ -288,7 +288,12 @@ describe('Jira webhook receiver (e2e)', () => {
   });
 
   it('ignores a redelivered or replayed delivery after the user moved the card', async () => {
-    const raw = payload('9', 'Done', 'done', { changelogId: 'change-replay' });
+    // The Jira change is dated 10 s away from the user move below, outside the 5-second
+    // conflict window (T-34): this test is about replays, not about a sync conflict.
+    const raw = payload('9', 'Done', 'done', {
+      changelogId: 'change-replay',
+      timestamp: (clock = Math.max(clock, Date.now()) + 10_000),
+    });
     await deliver(raw, 'delivery-replay-original');
     expect(await columnOfIssue()).toBe('DONE');
 
