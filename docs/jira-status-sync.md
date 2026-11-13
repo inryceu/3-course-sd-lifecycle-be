@@ -172,7 +172,7 @@ Common row fields:
 
 ## Sync conflicts (T-34, FR-13)
 
-Code: `jira-sync-conflict.detector.ts` (detection), `jira-sync-conflicts.service.ts` + `presentation/jira-conflicts.controller.ts` (list/resolve). Design: `openspec/changes/archive/*-jira-sync-conflicts/design.md`.
+Code: `jira-sync-conflict.detector.ts` (detection), `jira-sync-conflicts.service.ts` + `presentation/jira-conflicts.controller.ts` (list/resolve). Design: `openspec/changes/archive/2026-11-13-jira-sync-conflicts/design.md`.
 
 **Window.** A *user move* (`card.moved`, origin `user`, column change; time = `occurredAt`) and a *Jira change* (accepted status delivery; time = webhook `timestamp`, or receipt time) of the same linked card conflict when they are at most **5000 ms** apart, in either order, and the Jira status maps to a different column than the user's destination. A delivery whose status BoardSync itself transitioned the issue to (a `SUCCESS`/`transitioned` row for that status logged no earlier than 5 s before the change) is an echo and never counts.
 

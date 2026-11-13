@@ -73,7 +73,7 @@ The system SHALL execute exactly one Jira workflow transition per synchronized m
 
 ### Requirement: Record every outbound attempt in the sync log
 
-The system SHALL write exactly one `TO_JIRA` sync-log row per attempt that passes the filters: `SUCCESS` for a transition or no-op, `FAILED` otherwise. The payload SHALL include card id, issue key, source and destination columns, outcome or reason, the chosen status and transition when known, and `latencyMs`; failure rows SHALL include `errorMessage`. `mappingId` SHALL be set when a card-issue mapping exists, otherwise null.
+The system SHALL write exactly one `TO_JIRA` sync-log row per attempt that passes the filters: `SUCCESS` for a transition or no-op, `CONFLICT` when the move lost a sync conflict and no transition was sent, `FAILED` otherwise. The payload SHALL include card id, issue key, source and destination columns, outcome or reason, the chosen status and transition when known, and `latencyMs`; failure rows SHALL include `errorMessage`. `mappingId` SHALL be set when a card-issue mapping exists, otherwise null.
 
 #### Scenario: Successful transition is logged
 
@@ -84,6 +84,11 @@ The system SHALL write exactly one `TO_JIRA` sync-log row per attempt that passe
 
 - **WHEN** the issue already maps to the destination column
 - **THEN** one `TO_JIRA`/`SUCCESS` row records outcome `no-op`
+
+#### Scenario: Conflict is logged
+
+- **WHEN** the move lost a sync conflict
+- **THEN** one `TO_JIRA`/`CONFLICT` row records outcome `conflict` and no transition is sent
 
 #### Scenario: Failure is logged
 
