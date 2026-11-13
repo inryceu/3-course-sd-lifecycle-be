@@ -4,9 +4,10 @@ import { Repository } from 'typeorm';
 import { BOARDS_FACADE, BoardsFacade } from '../../boards';
 import { JiraIssueMappingEntity } from '../infrastructure/persistence/jira-issue-mapping.entity';
 import { adfToPlainText } from './helpers/adf-to-plain-text';
-import { JIRA_GATEWAY, JiraGateway } from './jira-gateway.port';
+import { JIRA_GATEWAY, JiraGateway, JiraProject } from './jira-gateway.port';
 import { toHttpError } from './jira-errors.mapper';
 import { JiraStatusMappingService } from './jira-status-mapping.service';
+import { JiraWebhookLifecycleService } from './jira-webhook-lifecycle.service';
 
 export interface ImportResult {
   /** created + updated */
@@ -36,6 +37,7 @@ export class JiraImportService {
     @Inject(BOARDS_FACADE) private readonly boards: BoardsFacade,
     @Inject(JIRA_GATEWAY) private readonly gateway: JiraGateway,
     private readonly statusMappings: JiraStatusMappingService,
+    private readonly webhooks: JiraWebhookLifecycleService,
   ) {}
 
   /**
@@ -50,6 +52,7 @@ export class JiraImportService {
     if (linked.board.jiraProjectKey !== linked.projectKey) {
       await this.boards.setJiraProjectKey(boardId, linked.projectKey);
     }
+    await this.webhooks.registerForBoard(boardId);
     const columnByStatus = await this.statusMappings.columnsByStatus(linked, statuses);
     const fallbackColumn = linked.board.columns[0].id;
 
@@ -89,6 +92,18 @@ export class JiraImportService {
     } while (nextPageToken);
 
     return result;
+  }
+
+  /** Projects the board's connection can see, sorted by name; any member may read them. */
+  async listProjects(userId: string, boardId: string): Promise<JiraProject[]> {
+    await this.statusMappings.requireRole(userId, boardId, false);
+    await this.statusMappings.requireConnectedBoard(boardId);
+    try {
+      const projects = await this.gateway.listProjects({ boardId });
+      return [...projects].sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error) {
+      throw toHttpError(error);
+    }
   }
 
   /** Card ↔ issue links of a board; any member may read them. */

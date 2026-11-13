@@ -13,6 +13,7 @@ import { BOARDS_FACADE, BoardRole, BoardsFacade } from '../../boards';
 import { AtlassianRejectedError, AtlassianUnavailableError } from '../domain/errors';
 import { JiraConnectionEntity } from '../infrastructure/persistence/jira-connection.entity';
 import { JiraOAuthStateEntity } from '../infrastructure/persistence/jira-oauth-state.entity';
+import { JiraWebhookLifecycleService } from './jira-webhook-lifecycle.service';
 import { ATLASSIAN_OAUTH, AtlassianOAuth } from './atlassian-oauth.port';
 import { codeChallenge, generateCodeVerifier, generateState } from './pkce';
 import { TOKEN_CIPHER, TokenCipher } from './token-cipher.port';
@@ -49,6 +50,7 @@ export class JiraOAuthService {
     @Inject(ATLASSIAN_OAUTH) private readonly atlassian: AtlassianOAuth,
     @Inject(TOKEN_CIPHER) private readonly cipher: TokenCipher,
     private readonly config: ConfigService,
+    private readonly webhooks: JiraWebhookLifecycleService,
   ) {}
 
   /** Returns the Atlassian authorise URL for a board; only the board Admin may start the flow. */
@@ -134,6 +136,7 @@ export class JiraOAuthService {
         },
         ['boardId'],
       );
+      await this.webhooks.registerForBoard(record.boardId);
       return { connected: true, cloudId: site.id, siteUrl: site.url };
     } catch (error) {
       if (error instanceof AtlassianRejectedError) {

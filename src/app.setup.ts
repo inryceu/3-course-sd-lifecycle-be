@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppConfig } from './config/configuration';
 import { RealtimeIoAdapter } from './modules/realtime';
 
@@ -17,6 +18,8 @@ export function configureApp(
   const { apiPrefix, frontendUrl } = appConfig;
 
   app.setGlobalPrefix(apiPrefix);
+  // Keep the raw bytes for webhook signature verification and allow Jira's larger payloads.
+  (app as NestExpressApplication).useBodyParser('json', { limit: '1mb' });
   app.enableCors({
     origin: frontendUrl,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

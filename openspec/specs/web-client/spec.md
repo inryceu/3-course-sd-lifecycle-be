@@ -1,7 +1,7 @@
 # web-client Specification
 
 ## Purpose
-Defines what a signed-in user can do in the BoardSync web client with the features the backend implements: boards, columns, cards, board roles, live board updates and the Jira connection (FR-02, FR-03, FR-04, FR-06, FR-11).
+Defines what a signed-in user can do in the BoardSync web client with the features the backend implements: boards, columns, cards, board roles, live board updates, deadline reminder notifications and the Jira connection (FR-02, FR-03, FR-04, FR-06, FR-09, FR-11).
 
 ## Requirements
 
@@ -83,11 +83,19 @@ The web client SHALL show each board's Jira connection status and let the board 
 - **THEN** the status shows the board as not connected
 
 ### Requirement: Jira import from the web client
-The Jira Sync page SHALL let the board Admin of a connected board enter or confirm the Jira project key, run the import, and see its result (created, updated, skipped). It SHALL show every member the status → column mapping, and let the Admin change and save it.
+The Jira Sync page SHALL let the board Admin of a connected board choose the Jira project from the list of projects of the connected site (shown as `name (KEY)`, the board's linked project preselected), run the import, and see its result (created, updated, skipped). When the project list cannot be loaded, the page SHALL fall back to entering the project key by hand. It SHALL show every member the status → column mapping, and let the Admin change and save it.
 
 #### Scenario: Import
-- **WHEN** the Admin of a connected board enters `KAN` and chooses Import
-- **THEN** the page shows the counts returned by the backend and the board shows the imported cards
+- **WHEN** the Admin of a connected board picks `Kanban (KAN)` and chooses Import
+- **THEN** the import runs for `KAN`, the page shows the counts returned by the backend and the board shows the imported cards
+
+#### Scenario: Linked project preselected
+- **WHEN** the Admin opens the Jira Sync page of a board linked to `KAN`
+- **THEN** the project picker shows `KAN` selected
+
+#### Scenario: Project list unavailable
+- **WHEN** listing the projects fails
+- **THEN** the page offers a project key text field instead of the picker and the import still works with the typed key
 
 #### Scenario: Edit the mapping
 - **WHEN** the Admin picks another column for a status and saves
@@ -114,3 +122,18 @@ The card dialog SHALL let Admins and Members choose the assignee among the board
 #### Scenario: Assign
 - **WHEN** a Member picks a member as assignee in the card dialog
 - **THEN** the card shows that assignee after reload
+
+### Requirement: Notifications bell
+The web client SHALL show a notifications bell in the header of every signed-in page with the number of unread notifications. Opening it SHALL list the user's notifications newest first, let the user mark one read, and the bell SHALL update without a reload when a `notification.created` event arrives.
+
+#### Scenario: Unread count
+- **WHEN** a signed-in user has two unread notifications
+- **THEN** the bell shows 2
+
+#### Scenario: Mark read
+- **WHEN** the user opens the bell and marks a deadline reminder read
+- **THEN** the item is shown as read and the count decreases
+
+#### Scenario: Live reminder
+- **WHEN** a reminder is created for the user while the page is open
+- **THEN** the count increases and the reminder appears in the list without a reload

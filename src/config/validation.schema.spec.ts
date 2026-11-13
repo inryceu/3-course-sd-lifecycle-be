@@ -21,7 +21,8 @@ const validConfig = {
   JIRA_CLIENT_ID: 'test-client-id',
   JIRA_CLIENT_SECRET: 'test-client-secret',
   JIRA_REDIRECT_URI: 'http://localhost:5173/jira/callback',
-  JIRA_SCOPES: 'read:jira-work,write:jira-work,read:jira-user,offline_access',
+  JIRA_SCOPES: 'read:jira-work,write:jira-work,read:jira-user,manage:jira-webhook,offline_access',
+  JIRA_WEBHOOK_URL: 'http://localhost:3000/api/v1/jira/webhook',
   TOKEN_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
   WEBHOOK_SECRET: 'your-webhook-secret-with-at-least-32-chars',
 };
@@ -38,12 +39,17 @@ describe('Configuration validation schema', () => {
     });
 
     it.each(['development', 'production', 'test'])('accepts NODE_ENV=%s', (nodeEnv) => {
-      const redirect =
-        nodeEnv === 'production' ? 'https://app.example.com/jira/callback' : undefined;
+      const production =
+        nodeEnv === 'production'
+          ? {
+              JIRA_REDIRECT_URI: 'https://app.example.com/jira/callback',
+              JIRA_WEBHOOK_URL: 'https://app.example.com/api/v1/jira/webhook',
+            }
+          : {};
       const { error } = validate({
         ...validConfig,
         NODE_ENV: nodeEnv,
-        ...(redirect ? { JIRA_REDIRECT_URI: redirect } : {}),
+        ...production,
       });
       expect(error).toBeUndefined();
     });
@@ -125,6 +131,17 @@ describe('Configuration validation schema', () => {
     });
   });
 
+  describe('deadline reminders', () => {
+    it('defaults REMINDER_INTERVAL_SECONDS to 60 and accepts 0 (off)', () => {
+      expect(validate(validConfig).value.REMINDER_INTERVAL_SECONDS).toBe(60);
+      expect(validate({ ...validConfig, REMINDER_INTERVAL_SECONDS: 0 }).error).toBeUndefined();
+    });
+
+    it.each([-1, 1.5, 'soon'])('rejects REMINDER_INTERVAL_SECONDS=%s', (value) => {
+      expect(validate({ ...validConfig, REMINDER_INTERVAL_SECONDS: value }).error).toBeDefined();
+    });
+  });
+
   describe('encryption key and secrets', () => {
     it.each([
       ['too short', '0123456789abcdef'],
@@ -173,6 +190,7 @@ describe('Configuration validation schema', () => {
       expect(value.DATABASE_PORT).toBe(5432);
       expect(value.DATABASE_LOGGING).toBe(false);
       expect(value.JIRA_SCOPES).toContain('offline_access');
+      expect(value.JIRA_SCOPES).toContain('manage:jira-webhook');
       expect(value.JIRA_AUTH_BASE_URL).toBe('https://auth.atlassian.com');
       expect(value.JIRA_API_BASE_URL).toBe('https://api.atlassian.com');
     });
@@ -188,7 +206,12 @@ describe('Configuration validation schema', () => {
   });
 
   describe('HTTPS in production', () => {
-    const production = { ...validConfig, NODE_ENV: 'production' };
+    const production = {
+      ...validConfig,
+      NODE_ENV: 'production',
+      JIRA_REDIRECT_URI: 'https://app.example.com/jira/callback',
+      JIRA_WEBHOOK_URL: 'https://app.example.com/api/v1/jira/webhook',
+    };
 
     it('rejects a plain-http Jira redirect URI', () => {
       const { error } = validate({ ...production, JIRA_REDIRECT_URI: 'http://app.example.com/cb' });
@@ -213,6 +236,39 @@ describe('Configuration validation schema', () => {
         JIRA_REDIRECT_URI: 'https://app.example.com/jira/callback',
       });
       expect(error).toBeUndefined();
+    });
+
+    it('accepts an http webhook URL outside production', () => {
+      const { error } = validate({
+        ...validConfig,
+        JIRA_WEBHOOK_URL: 'http://localhost:3000/api/v1/jira/webhook',
+      });
+      expect(error).toBeUndefined();
+    });
+
+    it('accepts an unset webhook URL', () => {
+      const config: Record<string, unknown> = { ...validConfig };
+      delete config['JIRA_WEBHOOK_URL'];
+      expect(validate(config).error).toBeUndefined();
+    });
+
+    it('accepts an https webhook URL in production', () => {
+      const { error } = validate({
+        ...production,
+        JIRA_REDIRECT_URI: 'https://app.example.com/jira/callback',
+        JIRA_WEBHOOK_URL: 'https://app.example.com/api/v1/jira/webhook',
+      });
+      expect(error).toBeUndefined();
+    });
+
+    it('rejects an http webhook URL in production', () => {
+      const { error } = validate({
+        ...production,
+        JIRA_REDIRECT_URI: 'https://app.example.com/jira/callback',
+        JIRA_WEBHOOK_URL: 'http://app.example.com/api/v1/jira/webhook',
+      });
+      expect(error).toBeDefined();
+      expect(formatValidationError(error)).toContain('JIRA_WEBHOOK_URL');
     });
 
     it('allows http outside production (local development and stub servers)', () => {

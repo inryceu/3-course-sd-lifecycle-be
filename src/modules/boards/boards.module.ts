@@ -7,6 +7,8 @@ import { CardsService } from './application/cards.service';
 import { ColumnsService } from './application/columns.service';
 import { BoardsFacadeService } from './application/boards-facade.service';
 import { BOARDS_FACADE } from './application/boards-facade.port';
+import { LabelsService } from './application/labels.service';
+import { CommentsService } from './application/comments.service';
 import { BoardMembershipEntity } from './infrastructure/persistence/board-membership.entity';
 import { BoardEntity } from './infrastructure/persistence/board.entity';
 import { CardEntity } from './infrastructure/persistence/card.entity';
@@ -17,7 +19,13 @@ import { BoardsController } from './presentation/boards.controller';
 import { CardsController } from './presentation/cards.controller';
 import { ColumnsController } from './presentation/columns.controller';
 import { MembersController } from './presentation/members.controller';
+import { LabelsController } from './presentation/labels.controller';
+import { CommentsController } from './presentation/comments.controller';
 import { MembersService } from './application/members.service';
+import { DeadlineRemindersService } from './application/deadline-reminders.service';
+import { NotificationsService } from './application/notifications.service';
+import { NotificationEntity } from './infrastructure/persistence/notification.entity';
+import { NotificationsController } from './presentation/notifications.controller';
 
 @Module({
   imports: [
@@ -32,14 +40,27 @@ import { MembersService } from './application/members.service';
       LabelEntity,
       CommentEntity,
       BoardMembershipEntity,
+      NotificationEntity,
     ]),
   ],
-  controllers: [BoardsController, ColumnsController, CardsController, MembersController],
+  controllers: [
+    BoardsController,
+    ColumnsController,
+    CardsController,
+    MembersController,
+    LabelsController,
+    CommentsController,
+    NotificationsController,
+  ],
   providers: [
     BoardsService,
     ColumnsService,
     CardsService,
     MembersService,
+    LabelsService,
+    CommentsService,
+    NotificationsService,
+    DeadlineRemindersService,
     BoardsFacadeService,
     { provide: BOARDS_FACADE, useExisting: BoardsFacadeService },
   ],

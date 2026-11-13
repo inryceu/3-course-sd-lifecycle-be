@@ -278,6 +278,88 @@ describe('JiraGatewayHttpClient.searchIssues', () => {
   });
 });
 
+describe('JiraGatewayHttpClient getIssue', () => {
+  it('reads the issue id, key and current status', async () => {
+    respond = () => ({
+      status: 200,
+      body: {
+        id: ISSUE.id,
+        key: ISSUE.key,
+        fields: { status: ISSUE.fields.status },
+      },
+    });
+    const { client } = setup();
+
+    await expect(client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-1' })).resolves.toEqual({
+      id: ISSUE.id,
+      key: ISSUE.key,
+      status: ISSUE.fields.status,
+    });
+    expect(requests[0].method).toBe('GET');
+    expect(requests[0].url).toContain('/issue/KAN-1?fields=status');
+  });
+
+  it('maps a missing issue to JiraClientError', async () => {
+    respond = () => ({ status: 404, body: { errorMessages: ['Issue does not exist'] } });
+    const { client } = setup();
+
+    const failure = client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-404' });
+    await expect(failure).rejects.toBeInstanceOf(JiraClientError);
+    await expect(failure).rejects.toMatchObject({
+      status: 404,
+      providerError: 'Issue does not exist',
+    });
+  });
+
+  it('caps the per-request timeout by a shortened caller budget', async () => {
+    respond = () => ({
+      status: 200,
+      body: { id: ISSUE.id, key: ISSUE.key, fields: { status: ISSUE.fields.status } },
+    });
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    const { client } = setup({ timeBudgetMs: 5_000, timeoutMs: 10_000 });
+
+    await client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-1', timeBudgetMs: 250 });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(250);
+  });
+
+  it('caps a caller budget above the configured budget', async () => {
+    respond = () => ({
+      status: 200,
+      body: { id: ISSUE.id, key: ISSUE.key, fields: { status: ISSUE.fields.status } },
+    });
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    const { client } = setup({ timeBudgetMs: 5_000, timeoutMs: 10_000 });
+
+    await client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-1', timeBudgetMs: 60_000 });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+  });
+
+  it('uses the configured budget when the caller omits the override', async () => {
+    respond = () => ({
+      status: 200,
+      body: { id: ISSUE.id, key: ISSUE.key, fields: { status: ISSUE.fields.status } },
+    });
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    const { client } = setup({ timeBudgetMs: 4_000, timeoutMs: 10_000 });
+
+    await client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-1' });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(4_000);
+  });
+
+  it('rejects before calling Jira when the caller budget is already exhausted', async () => {
+    const { client } = setup({ timeBudgetMs: 5_000 });
+
+    const failure = client.getIssue({ boardId: BOARD, issueIdOrKey: 'KAN-1', timeBudgetMs: 0 });
+    await expect(failure).rejects.toBeInstanceOf(JiraTimeBudgetExceededError);
+    await expect(failure).rejects.toMatchObject({ timeBudgetMs: 0, attempts: 0 });
+    expect(requests).toHaveLength(0);
+  });
+});
+
 describe('JiraGatewayHttpClient transitions and comments', () => {
   it('lists transitions with filters', async () => {
     respond = () => ({
@@ -1094,6 +1176,68 @@ describe('JiraGatewayHttpClient retries', () => {
     );
     expect(sleep).not.toHaveBeenCalled();
     expect(requests).toHaveLength(1);
+  });
+});
+
+describe('JiraGatewayHttpClient.listProjects', () => {
+  const project = (id: string, key: string, name: string) => ({
+    id,
+    key,
+    name,
+    self: `https://jira/project/${id}`,
+    projectTypeKey: 'software',
+  });
+
+  it('follows the offset pagination until isLast and returns id, key and name', async () => {
+    respond = (request) =>
+      query(request).get('startAt') === '0'
+        ? {
+            status: 200,
+            body: {
+              startAt: 0,
+              maxResults: 2,
+              isLast: false,
+              values: [project('1', 'KAN', 'Kanban'), project('2', 'OPS', 'Ops')],
+            },
+          }
+        : {
+            status: 200,
+            body: { startAt: 2, maxResults: 2, isLast: true, values: [project('3', 'WEB', 'Web')] },
+          };
+    const { client } = setup();
+
+    const result = await client.listProjects({ boardId: BOARD });
+
+    expect(result).toEqual([
+      { id: '1', key: 'KAN', name: 'Kanban' },
+      { id: '2', key: 'OPS', name: 'Ops' },
+      { id: '3', key: 'WEB', name: 'Web' },
+    ]);
+    expect(requests.map((r) => r.url.split('?')[0])).toEqual([
+      `/ex/jira/${CLOUD}/rest/api/3/project/search`,
+      `/ex/jira/${CLOUD}/rest/api/3/project/search`,
+    ]);
+    expect(requests.map((r) => query(r).get('startAt'))).toEqual(['0', '2']);
+    expect(query(requests[0]).get('maxResults')).toBe('50');
+  });
+
+  it('stops on an empty page even when isLast is false', async () => {
+    respond = () => ({ status: 200, body: { isLast: false, values: [] } });
+    const { client } = setup();
+
+    await expect(client.listProjects({ boardId: BOARD })).resolves.toEqual([]);
+    expect(requests).toHaveLength(1);
+  });
+
+  it('rejects without read:jira-work before calling Jira', async () => {
+    respond = () => ({ status: 200, body: { isLast: true, values: [] } });
+    const { client } = setup({ connection: makeConnection({ scopes: ['write:jira-work'] }) });
+
+    await expect(client.listProjects({ boardId: BOARD })).rejects.toMatchObject({
+      status: 403,
+      providerError: 'missing_scope',
+    });
+    expect(requests).toHaveLength(0);
   });
 });
 

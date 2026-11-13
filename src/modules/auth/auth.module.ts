@@ -36,6 +36,6 @@ import { JwtAuthGuard } from './presentation/guards/jwt-auth.guard';
     { provide: AUTH_FACADE, useExisting: AuthFacadeService },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
-  exports: [AUTH_FACADE],
+  exports: [AUTH_FACADE, JwtModule],
 })
 export class AuthModule {}

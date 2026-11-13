@@ -86,11 +86,16 @@ function setup(
     moveCardFromExternal: jest.fn(),
   };
   const gateway = {
+    listProjects: jest.fn().mockResolvedValue([
+      { id: '2', key: 'OPS', name: 'Ops' },
+      { id: '1', key: 'KAN', name: 'Kanban' },
+    ]),
     listProjectStatuses: jest.fn().mockResolvedValue([TODO, DOING, REVIEW, DONE]),
     searchIssues: jest.fn().mockResolvedValue({ issues: [], nextPageToken: null, isLast: true }),
   } as unknown as jest.Mocked<JiraGateway>;
   const statusRepo = {
     find: jest.fn().mockResolvedValue(options.stored ?? []),
+    findOne: jest.fn().mockResolvedValue(null),
     upsert: jest.fn().mockResolvedValue(undefined),
   };
   const connections = { exist: jest.fn().mockResolvedValue(options.connected ?? true) };
@@ -104,13 +109,15 @@ function setup(
     facade,
     gateway,
   );
+  const webhooks = { registerForBoard: jest.fn().mockResolvedValue(false) };
   const importer = new JiraImportService(
     links as unknown as Repository<JiraIssueMappingEntity>,
     facade,
     gateway,
     mappings,
+    webhooks as never,
   );
-  return { facade, gateway, statusRepo, links, mappings, importer };
+  return { facade, gateway, statusRepo, links, mappings, importer, webhooks };
 }
 
 describe('JiraStatusMappingService', () => {
@@ -192,6 +199,14 @@ describe('JiraStatusMappingService', () => {
 });
 
 describe('JiraImportService', () => {
+  it('registers the board webhook after storing the project key', async () => {
+    const { importer, webhooks } = setup({ summary: board('KAN') });
+
+    await importer.import('u', 'b1');
+
+    expect(webhooks.registerForBoard).toHaveBeenCalledWith('b1');
+  });
+
   it('links the project, imports every page through the facade and counts the outcomes', async () => {
     const { importer, facade, gateway, links } = setup();
     gateway.searchIssues
@@ -282,5 +297,33 @@ describe('JiraImportService', () => {
     const { importer, gateway } = setup();
     await expect(importer.import('u', 'b1', 'kan-1')).rejects.toBeInstanceOf(BadRequestException);
     expect(gateway.listProjectStatuses).not.toHaveBeenCalled();
+  });
+});
+
+describe('JiraImportService.listProjects', () => {
+  it('returns the projects of the connection sorted by name to any member', async () => {
+    const { importer, gateway } = setup({ role: BoardRole.VIEWER });
+
+    await expect(importer.listProjects('u', 'b1')).resolves.toEqual([
+      { id: '1', key: 'KAN', name: 'Kanban' },
+      { id: '2', key: 'OPS', name: 'Ops' },
+    ]);
+    expect(gateway.listProjects).toHaveBeenCalledWith({ boardId: 'b1' });
+  });
+
+  it('answers 404 to a non-member and 409 for a board without a connection', async () => {
+    await expect(setup({ role: null }).importer.listProjects('u', 'b1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    const { importer, gateway } = setup({ connected: false });
+    await expect(importer.listProjects('u', 'b1')).rejects.toBeInstanceOf(ConflictException);
+    expect(gateway.listProjects).not.toHaveBeenCalled();
+  });
+
+  it('maps gateway failures like the import', async () => {
+    const { importer, gateway } = setup();
+    gateway.listProjects.mockRejectedValue(new JiraUnauthorizedError('reconnect required'));
+
+    await expect(importer.listProjects('u', 'b1')).rejects.toBeInstanceOf(ConflictException);
   });
 });

@@ -17,7 +17,7 @@ export interface ExternalCardMove {
   boardId: string;
   jiraIssueKey: string;
   columnId: string;
-  position: number;
+  position?: number;
 }
 
 export interface ExternalUpsertResult {

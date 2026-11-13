@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BOARDS_FACADE, BoardRole, BoardsFacade } from '../../boards';
 import { JiraConnectionEntity } from '../infrastructure/persistence/jira-connection.entity';
+import { JiraWebhookLifecycleService } from './jira-webhook-lifecycle.service';
 
 /** Connection status as exposed by the API. It never contains tokens. */
 export interface JiraConnectionStatus {
@@ -21,6 +22,7 @@ export class JiraConnectionService {
     @InjectRepository(JiraConnectionEntity)
     private readonly connections: Repository<JiraConnectionEntity>,
     @Inject(BOARDS_FACADE) private readonly boards: BoardsFacade,
+    private readonly webhooks: JiraWebhookLifecycleService,
   ) {}
 
   /** Any board member may read the status. */
@@ -62,5 +64,6 @@ export class JiraConnectionService {
       throw new ForbiddenException('Only a board admin can manage the Jira connection');
     }
     await this.connections.delete({ boardId });
+    await this.webhooks.removeForBoard(boardId);
   }
 }
