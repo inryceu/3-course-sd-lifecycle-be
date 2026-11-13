@@ -11,7 +11,7 @@ This repository implements the backend: REST API, a Socket.IO gateway for real-t
 ## Approach
 
 - **Spec-driven development.** Behaviour changes start as an OpenSpec change (`openspec/changes/<name>`: proposal, design, spec deltas, tasks) and are archived into `openspec/specs/` afterwards. The REST/WebSocket contract is written first: [`docs/api/openapi.yaml`](docs/api/openapi.yaml) and [`docs/api/ws-events.md`](docs/api/ws-events.md).
-- **Modular monolith.** Feature modules with a fixed internal layout and automated boundary checks - see [`docs/architecture/module-structure.md`](docs/architecture/module-structure.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).
+- **Modular monolith.** Feature modules with a fixed internal layout and automated boundary checks - see [`docs/architecture/module-structure.md`](docs/architecture/module-structure.md).
 - **Contract first with the frontend.** The frontend repository generates its API types from the OpenAPI file.
 
 ## Project structure
@@ -19,6 +19,7 @@ This repository implements the backend: REST API, a Socket.IO gateway for real-t
 ```
 src/
 ├── app.module.ts
+├── app.setup.ts
 ├── main.ts
 ├── common/           # shared kernel (events, ports, base entity, decorators)
 ├── config/           # database, validation, env configuration
@@ -37,9 +38,9 @@ src/
 | Module | Responsibility | Status |
 | --- | --- | --- |
 | `auth` | Registration, login, JWT (≤ 1 h), global guard, `AUTH_FACADE` | ✅ Implemented (FR-01) |
-| `boards` | Boards, columns (ordering, min 3), cards, board roles, `BOARDS_FACADE` | ✅ Core implemented (FR-03, FR-04); 🚧 Labels, comments, members (FR-08, FR-09, FR-10) |
-| `jira-sync` | OAuth 2.0 (3LO) connect flow, AES-256-GCM token vault, Jira gateway client | ✅ Connect/status/disconnect (FR-02); ✅ Token vault; ✅ Gateway client (T-23); 🚧 Import (FR-05), sync (FR-06), webhooks (FR-12) |
-| `realtime` | Socket.IO namespace `/realtime`, board rooms, event delivery | ✅ Transport (FR-11); 🚧 Presence, typing indicators |
+| `boards` | Boards, columns (ordering, min 3), cards, board roles, `BOARDS_FACADE` | ✅ Core implemented (FR-03, FR-04); ✅ Members and roles (FR-10); 🚧 Labels/comments (FR-08, FR-09) — KAN-41 |
+| `jira-sync` | OAuth 2.0 (3LO) connect flow, AES-256-GCM token vault, Jira gateway client, issue import | ✅ Connect/status/disconnect (FR-02); ✅ Token vault; ✅ Gateway client (T-23); ✅ Import and status mappings (FR-05); 🚧 Status sync (FR-06) — KAN-36; 🚧 Webhooks (FR-12) — KAN-37 |
+| `realtime` | Socket.IO namespace `/realtime`, board rooms, event delivery | ✅ Transport (FR-11) |
 | `health` | `GET /api/v1/health` (database readiness) — reference module | ✅ Implemented |
 
 Cross-module rules (public API only, no entity/repository sharing, no cycles) are enforced by `pnpm lint`.
@@ -120,7 +121,7 @@ The per-environment compose files remain: `docker-compose.yml` (development, hot
 
 - **PlantUML sources:** `docs/declarative/` (component, class, sequence, state)
 - **Rendered PNGs:** `docs/image/`
-- **Verification records:** `docs/verification/KAN-*.md` (KAN-24 token vault, KAN-25 OAuth connect, KAN-34 Jira gateway)
+- **Verification records:** [`docs/verification/`](docs/verification/)
 - **Jira sandbox setup:** [`docs/jira-sandbox.md`](docs/jira-sandbox.md)
 - **Process & Definition of Done:** [`docs/process.md`](docs/process.md)
 - **ADR (full-stack compose rationale):** [`docs/adr/0001-full-stack-compose.md`](docs/adr/0001-full-stack-compose.md)
