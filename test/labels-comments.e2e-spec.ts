@@ -58,6 +58,26 @@ describe('Labels and comments (e2e)', () => {
     await dataSource.getRepository(BoardMembershipEntity).delete({ boardId, userId });
   }
 
+  type CommentPage = { items: { id: string; text: string }[]; nextCursor: string | null };
+  const page = (res: request.Response) => res.body as CommentPage;
+  const texts = (res: request.Response) => page(res).items.map((i) => i.text);
+
+  /** The single `board.updated` published since `events` was last reset. */
+  function boardUpdatedPayload(): unknown {
+    const updates = events.filter((e) => e.type === 'board.updated');
+    expect(updates).toHaveLength(1);
+    return updates[0].payload;
+  }
+
+  async function cardWithComments(owner: TestUser, n: number): Promise<{ id: string }> {
+    const board = await createBoard(app, owner, 'Paging Board');
+    const card = await createCard(app, owner, board.columns[0].id);
+    for (let i = 0; i < n; i++) {
+      await post(owner, `/cards/${card.id}/comments`, { text: `c${i}` }).expect(201);
+    }
+    return card;
+  }
+
   describe('Labels', () => {
     it('supports create, duplicate check, attach, and delete workflows', async () => {
       const owner = await registerUser(app, 'owner1');
@@ -81,7 +101,9 @@ describe('Labels and comments (e2e)', () => {
 
       events = [];
       await del(owner, `/labels/${label.id}`).expect(204);
-      expect(events.map((e) => e.type)).toContain('board.updated');
+      expect(boardUpdatedPayload()).toEqual({
+        board: expect.objectContaining({ id: board.id, title: 'Label Board' }),
+      });
 
       const cardRes = await get(owner, `/cards/${card.id}`).expect(200);
       expect(cardRes.body.labelIds).not.toContain(label.id);
@@ -118,12 +140,7 @@ describe('Labels and comments (e2e)', () => {
 
       const page1 = await get(owner, `/cards/${card.id}/comments?limit=4`).expect(200);
       expect(page1.body.items).toHaveLength(4);
-      expect(page1.body.items.map((i: any) => i.text)).toEqual([
-        'Comment 0',
-        'Comment 1',
-        'Comment 2',
-        'Comment 3',
-      ]);
+      expect(texts(page1)).toEqual(['Comment 0', 'Comment 1', 'Comment 2', 'Comment 3']);
       expect(page1.body.nextCursor).not.toBeNull();
 
       const page2 = await get(
@@ -131,12 +148,7 @@ describe('Labels and comments (e2e)', () => {
         `/cards/${card.id}/comments?limit=4&cursor=${page1.body.nextCursor}`,
       ).expect(200);
       expect(page2.body.items).toHaveLength(4);
-      expect(page2.body.items.map((i: any) => i.text)).toEqual([
-        'Comment 4',
-        'Comment 5',
-        'Comment 6',
-        'Comment 7',
-      ]);
+      expect(texts(page2)).toEqual(['Comment 4', 'Comment 5', 'Comment 6', 'Comment 7']);
 
       const page3 = await get(
         owner,
@@ -169,7 +181,62 @@ describe('Labels and comments (e2e)', () => {
 
       events = [];
       await del(owner, `/cards/${card.id}/comments/${commentId}`).expect(204);
-      expect(events.map((e) => e.type)).toContain('board.updated');
+      expect(boardUpdatedPayload()).toEqual({
+        board: expect.objectContaining({ id: board.id, title: 'Removal Board' }),
+      });
+    });
+
+    it('keeps paging when the cursor comment is deleted between pages', async () => {
+      const owner = await registerUser(app, 'owner5');
+      const card = await cardWithComments(owner, 9);
+
+      const page1 = await get(owner, `/cards/${card.id}/comments?limit=3`).expect(200);
+      expect(texts(page1)).toEqual(['c0', 'c1', 'c2']);
+      const last = page(page1).items[2];
+      await del(owner, `/cards/${card.id}/comments/${last.id}`).expect(204);
+
+      const page2 = await get(
+        owner,
+        `/cards/${card.id}/comments?limit=3&cursor=${page(page1).nextCursor}`,
+      ).expect(200);
+      expect(texts(page2)).toEqual(['c3', 'c4', 'c5']);
+      expect(page(page2).nextCursor).not.toBeNull();
+    });
+
+    it('pages comments that share one timestamp without loss or repeats', async () => {
+      const owner = await registerUser(app, 'owner6');
+      const card = await cardWithComments(owner, 7);
+      await dataSource.query(
+        `UPDATE comments SET "createdAt" = '2026-01-01T00:00:00.123456Z' WHERE card_id = $1`,
+        [card.id],
+      );
+
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const res = await get(
+          owner,
+          `/cards/${card.id}/comments?limit=2${cursor ? `&cursor=${cursor}` : ''}`,
+        ).expect(200);
+        seen.push(...texts(res));
+        cursor = page(res).nextCursor;
+      } while (cursor);
+      expect([...seen].sort()).toEqual(['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6']);
+    });
+
+    it('rejects malformed, unknown and other-card cursors with 400', async () => {
+      const owner = await registerUser(app, 'owner7');
+      const cardA = await cardWithComments(owner, 3);
+      const cardB = await cardWithComments(owner, 3);
+
+      await get(owner, `/cards/${cardA.id}/comments?cursor=abc`).expect(400);
+      await get(
+        owner,
+        `/cards/${cardA.id}/comments?cursor=7f1d7e1c-2b7a-4c39-9a51-3c1a5d1e0f00`,
+      ).expect(400);
+
+      const pageA = await get(owner, `/cards/${cardA.id}/comments?limit=1`).expect(200);
+      await get(owner, `/cards/${cardB.id}/comments?cursor=${page(pageA).nextCursor}`).expect(400);
     });
   });
 });
