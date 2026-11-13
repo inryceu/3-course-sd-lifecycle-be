@@ -1,12 +1,13 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { EVENT_PUBLISHER, EventPublisher, createEvent } from '../../../common/events';
 import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { CardEntity } from '../infrastructure/persistence/card.entity';
 import { LabelEntity } from '../infrastructure/persistence/label.entity';
 import { BoardAccessService } from './board-access.service';
 import { toBoardSnapshot, toCardSnapshot } from './board-events';
+import { isUniqueViolation } from './members.service';
 import { CardView, toCardView } from './views';
 
 @Injectable()
@@ -35,7 +36,7 @@ export class LabelsService {
       const label = this.labels.create({ boardId, name, color: color ?? undefined });
       return await this.labels.save(label);
     } catch (error) {
-      if (error instanceof QueryFailedError && error.driverError.code === '23505') {
+      if (isUniqueViolation(error)) {
         throw new ConflictException('A label with this name already exists on this board');
       }
       throw error;
@@ -58,7 +59,7 @@ export class LabelsService {
     try {
       return await this.labels.save(label);
     } catch (error) {
-      if (error instanceof QueryFailedError && error.driverError.code === '23505') {
+      if (isUniqueViolation(error)) {
         throw new ConflictException('A label with this name already exists');
       }
       throw error;
