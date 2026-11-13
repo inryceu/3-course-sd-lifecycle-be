@@ -28,7 +28,7 @@
 | Real-time | WebSocket (NestJS Gateways / Socket.IO) |
 | Jira Integration | Jira REST API v3, OAuth 2.0 (3LO) |
 | Containerization | Docker, Docker Compose |
-| CI/CD | GitHub Actions (lint, typecheck, test, build only — **no deploy**) |
+| CI/CD | GitHub Actions (lint, typecheck, tests with coverage gate, build, Docker image build — **no push, no deploy**) |
 | Spec Management | OpenSpec (`openspec/` directory) |
 | Package Manager | pnpm 9+ |
 
@@ -217,7 +217,7 @@ Before marking any task complete, verify:
 
 ## CI/CD Pipeline (GitHub Actions) — Cost-Free Configuration
 
-**IMPORTANT**: The CI pipeline runs **only lint, typecheck, test, and build**. No Docker images are pushed to registries. No deployment jobs run. All development happens locally.
+**IMPORTANT**: The CI pipeline runs **only lint, typecheck, tests (with coverage thresholds), build and a Docker image build**. No Docker images are pushed to registries. No deployment jobs run. All development happens locally.
 
 ```yaml
 # .github/workflows/ci.yml runs on push/PR to main and dev

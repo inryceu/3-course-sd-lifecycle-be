@@ -13,7 +13,7 @@ set -euo pipefail
 REPOS="${REPOS:-inryceu/3-course-sd-lifecycle-be inryceu/3-course-sd-lifecycle-fe}"
 BRANCHES="${BRANCHES:-main dev}"
 # Names of the check runs reported by .github/workflows/ci.yml (identical in both repos).
-REQUIRED_CHECKS='["Lint","TypeCheck","Tests","Build"]'
+REQUIRED_CHECKS='["Lint","TypeCheck","Tests","Build","Docker Build"]'
 
 DRY_RUN=false
 if [[ "${1:-}" == "--dry-run" ]]; then

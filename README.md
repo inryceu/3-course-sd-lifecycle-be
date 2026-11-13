@@ -1,5 +1,8 @@
 # BoardSync - Backend
 
+[![CI (dev)](https://github.com/inryceu/3-course-sd-lifecycle-be/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/inryceu/3-course-sd-lifecycle-be/actions/workflows/ci.yml?query=branch%3Adev)
+[![CI (main)](https://github.com/inryceu/3-course-sd-lifecycle-be/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/inryceu/3-course-sd-lifecycle-be/actions/workflows/ci.yml?query=branch%3Amain)
+
 > Kanban board service with two-way Jira synchronisation. Backend repository (NestJS + TypeORM + PostgreSQL).
 
 ## Concept

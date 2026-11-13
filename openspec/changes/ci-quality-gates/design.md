@@ -31,9 +31,9 @@ All agreed numbers pass on current code, so they are adopted unchanged instead o
 
 The 85 % rule is backend-only: the frontend has no auth/jira-sync service layer (its `features/auth` and `features/jira-sync` are React components and a context), so applying a service rule there would be an invented requirement.
 
-Backend uses Jest `coverageThreshold` with a global `lines: 70` and one glob key per module (`./modules/{auth,jira-sync}/application/*.service.ts`, resolved against `rootDir: src`). Jest checks a glob key per matching file and removes those files from the global pool. Frontend uses Vitest `coverage.thresholds.lines: 70`.
+Backend: Jest `coverageThreshold: { global: { lines: 70 } }` gates the whole repository, and `scripts/check-service-coverage.mjs` (chained into `pnpm test:cov`) reads `coverage/coverage-summary.json` and fails when any `src/modules/{auth,jira-sync}/application/*.service.ts` is below 85 % lines, or when no such file is in the report. Frontend: Vitest `coverage.thresholds.lines: 70`. Both gates live in the `test:cov` / `test:coverage` commands, so a developer sees the failure locally before pushing.
 
-Alternative considered: thresholds in the workflow (parse the summary with a script). Rejected: the config-level threshold also fails `pnpm test:cov` locally, so a developer sees the failure before pushing.
+Alternative considered and rejected: Jest glob keys (`'./src/modules/auth/application/*.service.ts': { lines: 85 }`). Jest moves every file matching a path/glob key out of the `global` pool, so the global number becomes "everything except the services": measured 64.76 %, which fails 70 % and no longer means "70 % per repo" as agreed. Keeping the agreed semantics needs the services counted twice (repo-wide and per file), which Jest cannot express; a 20-line summary check can.
 
 ### Coverage report as a workflow artifact, Codecov dropped
 `actions/upload-artifact@v4` with `if: always()` uploads `coverage/` (HTML, lcov, summary) as `coverage` for 14 days. Codecov without a token on a private-owner repo is rate-limited and silently skipped (`fail_ci_if_error: false`), so it gave a false sense of reporting. The `text-summary` reporter prints the totals in the job log.
