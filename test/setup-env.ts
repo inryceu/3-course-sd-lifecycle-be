@@ -20,8 +20,12 @@ const defaults: Record<string, string> = {
   JIRA_CLIENT_ID: 'test-client-id',
   JIRA_CLIENT_SECRET: 'test-client-secret',
   JIRA_REDIRECT_URI: 'http://localhost:5173/jira/callback',
+  JIRA_SCOPES: 'read:jira-work,write:jira-work,read:jira-user,manage:jira-webhook,offline_access',
+  JIRA_WEBHOOK_URL: 'http://localhost:3000/api/v1/jira/webhook',
   TOKEN_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
   WEBHOOK_SECRET: 'integration-test-webhook-secret-32-chars-min',
+  // The e2e tests call the reminder run directly.
+  REMINDER_INTERVAL_SECONDS: '0',
 };
 
 for (const [key, value] of Object.entries(defaults)) {

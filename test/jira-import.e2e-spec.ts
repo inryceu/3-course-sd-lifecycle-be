@@ -61,6 +61,14 @@ class FakeJira {
     else this.issues.push(issue);
   }
 
+  listProjects() {
+    if (this.failWith) return Promise.reject(this.failWith);
+    return Promise.resolve([
+      { id: '2', key: 'SBX', name: 'Sandbox' },
+      { id: '1', key: 'KAN', name: 'Kanban' },
+    ]);
+  }
+
   listProjectStatuses({ projectKey }: { projectKey: string }) {
     if (this.failWith) return Promise.reject(this.failWith);
     if (projectKey !== 'SBX') {
@@ -144,6 +152,11 @@ describe('Jira import (e2e)', () => {
       .post(`${PREFIX}/jira/import`)
       .set(bearer(admin))
       .send({ boardId: board.id, projectKey: 'SBX' })
+      .expect(409);
+    await request(server)
+      .get(`${PREFIX}/jira/projects`)
+      .query({ boardId: board.id })
+      .set(bearer(admin))
       .expect(409);
   });
 
@@ -261,6 +274,33 @@ describe('Jira import (e2e)', () => {
       .expect(400);
     const detail = await request(server).get(`${PREFIX}/boards/${board.id}`).set(bearer(admin));
     expect((detail.body as { jiraProjectKey: string }).jiraProjectKey).toBe('SBX');
+  });
+
+  it('lists the projects of the connection to any member, sorted by name', async () => {
+    const res = await request(server)
+      .get(`${PREFIX}/jira/projects`)
+      .query({ boardId: board.id })
+      .set(bearer(viewer))
+      .expect(200);
+    expect(res.body).toEqual([
+      { id: '1', key: 'KAN', name: 'Kanban' },
+      { id: '2', key: 'SBX', name: 'Sandbox' },
+    ]);
+
+    const stranger = await registerUser(app, 'import-stranger');
+    await request(server)
+      .get(`${PREFIX}/jira/projects`)
+      .query({ boardId: board.id })
+      .set(bearer(stranger))
+      .expect(404);
+
+    jira.failWith = new JiraUnauthorizedError('reconnect required');
+    await request(server)
+      .get(`${PREFIX}/jira/projects`)
+      .query({ boardId: board.id })
+      .set(bearer(admin))
+      .expect(409);
+    jira.failWith = null;
   });
 
   it('keeps import to the Admin and maps Jira failures', async () => {

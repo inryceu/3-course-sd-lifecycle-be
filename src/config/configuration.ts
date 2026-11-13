@@ -26,6 +26,7 @@ export interface JiraConfig {
   scopes: string[];
   authBaseUrl: string;
   apiBaseUrl: string;
+  webhookUrl?: string;
 }
 
 export interface CryptoConfig {
@@ -34,6 +35,11 @@ export interface CryptoConfig {
 
 export interface WebhookConfig {
   secret: string;
+}
+
+export interface RemindersConfig {
+  /** Seconds between deadline reminder runs; 0 disables the scheduler. */
+  intervalSeconds: number;
 }
 
 export interface DatabaseConfig {
@@ -74,13 +80,15 @@ export const jiraConfig = registerAs('jira', (): JiraConfig => ({
   clientSecret: process.env['JIRA_CLIENT_SECRET'],
   redirectUri: process.env['JIRA_REDIRECT_URI'],
   scopes: (
-    process.env['JIRA_SCOPES'] ?? 'read:jira-work,write:jira-work,read:jira-user,offline_access'
+    process.env['JIRA_SCOPES'] ??
+    'read:jira-work,write:jira-work,read:jira-user,manage:jira-webhook,offline_access'
   )
     .split(',')
     .map((scope) => scope.trim())
     .filter((scope) => scope.length > 0),
   authBaseUrl: process.env['JIRA_AUTH_BASE_URL'] ?? 'https://auth.atlassian.com',
   apiBaseUrl: process.env['JIRA_API_BASE_URL'] ?? 'https://api.atlassian.com',
+  webhookUrl: process.env['JIRA_WEBHOOK_URL'],
 }));
 
 /** `TOKEN_ENCRYPTION_KEY` is 32 bytes encoded as 64 hex characters (AES-256-GCM). */
@@ -92,6 +100,10 @@ export const webhookConfig = registerAs('webhook', (): WebhookConfig => ({
   secret: process.env['WEBHOOK_SECRET'],
 }));
 
+export const remindersConfig = registerAs('reminders', (): RemindersConfig => ({
+  intervalSeconds: parseInt(process.env['REMINDER_INTERVAL_SECONDS'] ?? '60', 10),
+}));
+
 export const allConfigs = [
   appConfig,
   databaseConfig,
@@ -99,4 +111,5 @@ export const allConfigs = [
   jiraConfig,
   cryptoConfig,
   webhookConfig,
+  remindersConfig,
 ];

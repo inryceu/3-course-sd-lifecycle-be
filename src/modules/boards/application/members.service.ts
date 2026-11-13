@@ -177,7 +177,7 @@ export class MembersService {
 }
 
 /** Postgres `unique_violation`. */
-function isUniqueViolation(error: unknown): boolean {
+export function isUniqueViolation(error: unknown): boolean {
   return (
     error instanceof QueryFailedError &&
     (error.driverError as { code?: string } | undefined)?.code === '23505'

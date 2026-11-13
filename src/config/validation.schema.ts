@@ -57,7 +57,13 @@ export const validationSchema = Joi.object({
       is: isProduction,
       then: Joi.string().uri({ scheme: ['https'] }),
     }),
-  JIRA_SCOPES: Joi.string().default('read:jira-work,write:jira-work,read:jira-user,offline_access'),
+  JIRA_SCOPES: Joi.string().default(
+    'read:jira-work,write:jira-work,read:jira-user,manage:jira-webhook,offline_access',
+  ),
+  JIRA_WEBHOOK_URL: Joi.string()
+    .uri()
+    .optional()
+    .when('NODE_ENV', { is: isProduction, then: Joi.string().uri({ scheme: ['https'] }) }),
   JIRA_AUTH_BASE_URL: Joi.string()
     .uri()
     .default('https://auth.atlassian.com')
@@ -72,6 +78,9 @@ export const validationSchema = Joi.object({
 
   // Webhook
   WEBHOOK_SECRET: Joi.string().min(32).required(),
+
+  // Deadline reminders: seconds between scheduler runs, 0 turns the scheduler off
+  REMINDER_INTERVAL_SECONDS: Joi.number().integer().min(0).default(60),
 }).required();
 
 /** Converts a Joi validation error to one readable message listing every problem. */

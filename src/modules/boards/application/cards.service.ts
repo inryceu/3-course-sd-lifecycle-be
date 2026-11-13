@@ -118,7 +118,10 @@ export class CardsService {
     if (input.title !== undefined) card.title = input.title;
     if (input.description !== undefined) card.description = input.description;
     if (input.deadline !== undefined) {
-      card.deadline = input.deadline ? new Date(input.deadline) : null;
+      const deadline = input.deadline ? new Date(input.deadline) : null;
+      // A new deadline gets its own reminder.
+      if (deadline?.getTime() !== card.deadline?.getTime()) card.reminderSentAt = null;
+      card.deadline = deadline;
     }
     const saved = await this.cards.save(card);
 
@@ -236,6 +239,8 @@ export class CardsService {
     if (assigneeId !== null) {
       await this.assertMember(card.boardId, assigneeId);
     }
+    // The new assignee gets their own reminder.
+    if (card.assigneeId !== assigneeId) card.reminderSentAt = null;
     card.assigneeId = assigneeId;
     const view = toCardView(await this.cards.save(card));
     await this.events.publish(
@@ -338,7 +343,7 @@ export class CardsService {
     boardId: string;
     jiraIssueKey: string;
     columnId: string;
-    position: number;
+    position?: number;
   }): Promise<'moved' | 'unchanged' | 'not-found'> {
     const { boardId, jiraIssueKey, columnId: targetColumnId, position: targetPosition } = input;
 
@@ -357,9 +362,14 @@ export class CardsService {
 
       const from = { columnId: current.columnId, position: current.position };
       const sameColumn = from.columnId === target.id;
+      // A status that maps to the card's current column did not move it; keep the user's order.
+      if (sameColumn && targetPosition === undefined) return 'unchanged';
       const count = await manager.count(CardEntity, { where: { columnId: target.id } });
       const maxPosition = sameColumn ? count - 1 : count;
-      const finalPosition = Math.min(Math.max(0, targetPosition), maxPosition);
+      const finalPosition =
+        targetPosition === undefined
+          ? maxPosition
+          : Math.min(Math.max(0, targetPosition), maxPosition);
 
       if (from.columnId === target.id && from.position === finalPosition) {
         return 'unchanged';

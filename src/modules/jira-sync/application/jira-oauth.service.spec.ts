@@ -77,6 +77,7 @@ function setup(role: BoardRole | null = BoardRole.ADMIN) {
         'jira.authBaseUrl': 'https://auth.atlassian.com/',
       })[key],
   };
+  const webhooks = { registerForBoard: jest.fn().mockResolvedValue(false) };
   const service = new JiraOAuthService(
     states as unknown as Repository<JiraOAuthStateEntity>,
     connections as unknown as Repository<JiraConnectionEntity>,
@@ -84,6 +85,7 @@ function setup(role: BoardRole | null = BoardRole.ADMIN) {
     atlassian,
     cipher,
     config as never,
+    webhooks as never,
   );
   // Give saved rows an id like the database would.
   states.save.mockImplementation((row: JiraOAuthStateEntity) => {
@@ -91,7 +93,7 @@ function setup(role: BoardRole | null = BoardRole.ADMIN) {
     rows.push(saved);
     return Promise.resolve(saved);
   });
-  return { service, states, connections, boards, atlassian, rows: () => rows };
+  return { service, states, connections, boards, atlassian, webhooks, rows: () => rows };
 }
 
 async function started(ctx: ReturnType<typeof setup>) {
@@ -174,6 +176,7 @@ describe('JiraOAuthService.callback', () => {
       string[],
     ];
     expect(conflictKeys).toEqual(['boardId']);
+    expect(ctx.webhooks.registerForBoard).toHaveBeenCalledWith(BOARD);
     expect(row).toMatchObject({
       boardId: BOARD,
       connectedById: USER,
