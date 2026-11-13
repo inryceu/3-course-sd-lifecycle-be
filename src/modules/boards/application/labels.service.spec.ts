@@ -1,6 +1,7 @@
 import { Repository } from 'typeorm';
 import { EventPublisher } from '../../../common/events';
 import { BoardRole } from '../domain/board-role';
+import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { CardEntity } from '../infrastructure/persistence/card.entity';
 import { LabelEntity } from '../infrastructure/persistence/label.entity';
 import { BoardAccessService } from './board-access.service';
@@ -26,6 +27,7 @@ describe('LabelsService', () => {
     const service = new LabelsService(
       labels,
       repo<CardEntity>({}),
+      repo<BoardEntity>({}),
       access(BoardRole.ADMIN),
       events(),
     );
@@ -52,7 +54,13 @@ describe('LabelsService', () => {
       findOne: jest.fn().mockResolvedValue({ id: 'l1', boardId: 'b1' }),
     });
 
-    const service = new LabelsService(labels, cards, access(BoardRole.ADMIN), publisher);
+    const service = new LabelsService(
+      labels,
+      cards,
+      repo<BoardEntity>({}),
+      access(BoardRole.ADMIN),
+      publisher,
+    );
     await service.attachToCard('u1', 'c1', 'l1');
 
     expect(cards.save).toHaveBeenCalled();

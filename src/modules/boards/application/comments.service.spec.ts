@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { EventPublisher } from '../../../common/events';
 import { BoardRole } from '../domain/board-role';
+import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { CardEntity } from '../infrastructure/persistence/card.entity';
 import { CommentEntity } from '../infrastructure/persistence/comment.entity';
 import { BoardAccessService } from './board-access.service';
@@ -19,6 +20,9 @@ const access = (role: BoardRole | null) =>
 const repo = <T extends object>(methods: Record<string, unknown>) =>
   methods as unknown as Repository<T>;
 
+const board = { id: 'b1', title: 'B', createdAt: new Date(), updatedAt: new Date() };
+const boards = repo<BoardEntity>({ findOneOrFail: jest.fn().mockResolvedValue(board) });
+
 describe('CommentsService', () => {
   it('creates a comment and publishes card.commented', async () => {
     const publisher = events();
@@ -30,7 +34,13 @@ describe('CommentsService', () => {
       save: jest.fn().mockResolvedValue({ id: 'cm1', text: 'Hi', createdAt: new Date() }),
     });
 
-    const service = new CommentsService(comments, cards, access(BoardRole.MEMBER), publisher);
+    const service = new CommentsService(
+      comments,
+      cards,
+      boards,
+      access(BoardRole.MEMBER),
+      publisher,
+    );
     const result = await service.create('u1', 'c1', 'Hi');
 
     expect(result.id).toBe('cm1');
@@ -39,7 +49,8 @@ describe('CommentsService', () => {
     );
   });
 
-  it('allows the author to delete their comment', async () => {
+  it('allows the author to delete their comment and publishes board.updated with the board', async () => {
+    const publisher = events();
     const cards = repo<CardEntity>({
       findOne: jest.fn().mockResolvedValue({ id: 'c1', boardId: 'b1' }),
     });
@@ -48,8 +59,20 @@ describe('CommentsService', () => {
       remove: jest.fn().mockResolvedValue(undefined),
     });
 
-    const service = new CommentsService(comments, cards, access(BoardRole.MEMBER), events());
+    const service = new CommentsService(
+      comments,
+      cards,
+      boards,
+      access(BoardRole.MEMBER),
+      publisher,
+    );
     await expect(service.delete('u1', 'c1', 'cm1')).resolves.toBeUndefined();
+    expect(publisher.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'board.updated',
+        payload: { board: expect.objectContaining({ id: 'b1', title: 'B' }) },
+      }),
+    );
   });
 
   it('prevents non-authors from deleting a comment if not admin', async () => {
@@ -60,7 +83,13 @@ describe('CommentsService', () => {
       findOne: jest.fn().mockResolvedValue({ id: 'cm1', authorId: 'u2' }),
     });
 
-    const service = new CommentsService(comments, cards, access(BoardRole.MEMBER), events());
+    const service = new CommentsService(
+      comments,
+      cards,
+      boards,
+      access(BoardRole.MEMBER),
+      events(),
+    );
     await expect(service.delete('u1', 'c1', 'cm1')).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -74,7 +103,7 @@ describe('CommentsService', () => {
     const accessMock = access(null);
     accessMock.requireMember = jest.fn().mockRejectedValue(new NotFoundException());
 
-    const service = new CommentsService(comments, cards, accessMock, events());
+    const service = new CommentsService(comments, cards, boards, accessMock, events());
     await expect(service.delete('u1', 'c1', 'cm1')).rejects.toBeInstanceOf(NotFoundException);
     expect(accessMock.requireMember).toHaveBeenCalledWith('u1', 'b1');
   });

@@ -2,10 +2,11 @@ import { ConflictException, Inject, Injectable, NotFoundException } from '@nestj
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { EVENT_PUBLISHER, EventPublisher, createEvent } from '../../../common/events';
+import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { CardEntity } from '../infrastructure/persistence/card.entity';
 import { LabelEntity } from '../infrastructure/persistence/label.entity';
 import { BoardAccessService } from './board-access.service';
-import { toCardSnapshot } from './board-events';
+import { toBoardSnapshot, toCardSnapshot } from './board-events';
 import { CardView, toCardView } from './views';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class LabelsService {
   constructor(
     @InjectRepository(LabelEntity) private readonly labels: Repository<LabelEntity>,
     @InjectRepository(CardEntity) private readonly cards: Repository<CardEntity>,
+    @InjectRepository(BoardEntity) private readonly boards: Repository<BoardEntity>,
     private readonly access: BoardAccessService,
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
@@ -68,13 +70,14 @@ export class LabelsService {
     if (!label) throw new NotFoundException('Label not found');
     await this.access.requireEditor(userId, label.boardId);
     await this.labels.remove(label);
+    const board = await this.boards.findOneOrFail({ where: { id: label.boardId } });
 
     await this.events.publish(
       createEvent('board.updated', {
         boardId: label.boardId,
         actorId: userId,
         origin: 'user',
-        payload: { id: label.boardId } as any,
+        payload: { board: toBoardSnapshot(board) },
       }),
     );
   }

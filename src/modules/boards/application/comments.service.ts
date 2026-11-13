@@ -14,9 +14,11 @@ import {
   createEvent,
 } from '../../../common/events';
 import { BoardRole } from '../domain/board-role';
+import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { CardEntity } from '../infrastructure/persistence/card.entity';
 import { CommentEntity } from '../infrastructure/persistence/comment.entity';
 import { BoardAccessService } from './board-access.service';
+import { toBoardSnapshot } from './board-events';
 
 export const toCommentSnapshot = (c: CommentEntity): CommentSnapshot => ({
   id: c.id,
@@ -32,6 +34,7 @@ export class CommentsService {
   constructor(
     @InjectRepository(CommentEntity) private readonly comments: Repository<CommentEntity>,
     @InjectRepository(CardEntity) private readonly cards: Repository<CardEntity>,
+    @InjectRepository(BoardEntity) private readonly boards: Repository<BoardEntity>,
     private readonly access: BoardAccessService,
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
@@ -112,13 +115,14 @@ export class CommentsService {
     }
 
     await this.comments.remove(comment);
+    const board = await this.boards.findOneOrFail({ where: { id: card.boardId } });
 
     await this.events.publish(
       createEvent('board.updated', {
         boardId: card.boardId,
         actorId: userId,
         origin: 'user',
-        payload: { id: card.boardId } as any,
+        payload: { board: toBoardSnapshot(board) },
       }),
     );
   }
