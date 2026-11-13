@@ -46,7 +46,7 @@ A ticket is Done when all of these hold:
 
 1. The acceptance criteria are met and can be demonstrated.
 2. Unit tests for new logic are included (component and E2E suites are separate tickets from Sprint 7).
-3. Lint, typecheck, tests and build pass in CI.
+3. Lint, typecheck, tests (coverage thresholds included), build and Docker build pass in CI.
 4. `docs/api/openapi.yaml`, `docs/api/ws-events.md` and the README are updated if behaviour or setup changed.
 5. The PR was reviewed and approved by the ticket's Reviewer, merged into `dev`, and the Jira ticket moved to Done.
 
