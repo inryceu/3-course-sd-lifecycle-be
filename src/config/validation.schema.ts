@@ -57,7 +57,13 @@ export const validationSchema = Joi.object({
       is: isProduction,
       then: Joi.string().uri({ scheme: ['https'] }),
     }),
-  JIRA_SCOPES: Joi.string().default('read:jira-work,write:jira-work,read:jira-user,offline_access'),
+  JIRA_SCOPES: Joi.string().default(
+    'read:jira-work,write:jira-work,read:jira-user,manage:jira-webhook,offline_access',
+  ),
+  JIRA_WEBHOOK_URL: Joi.string()
+    .uri()
+    .optional()
+    .when('NODE_ENV', { is: isProduction, then: Joi.string().uri({ scheme: ['https'] }) }),
   JIRA_AUTH_BASE_URL: Joi.string()
     .uri()
     .default('https://auth.atlassian.com')

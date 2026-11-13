@@ -15,7 +15,7 @@ Everything a developer needs to run the Jira integration against a real Jira Clo
 1. Open <https://developer.atlassian.com/console/myapps/> → **Create** → **OAuth 2.0 integration**, name it `BoardSync (dev)`.
 2. **Permissions** → Jira API → **Add**, then **Configure** and add the classic scopes:
    - `read:jira-work`, `write:jira-work`, `read:jira-user`
-   - `manage:jira-webhook` (needed once the backend registers webhooks itself, T-26)
+   - `manage:jira-webhook` (the backend registers, lists and refreshes dynamic webhooks)
    `offline_access` is not a console setting; the backend requests it in the authorise URL so Atlassian returns a refresh token.
 3. **Authorization** → OAuth 2.0 (3LO) → callback URL. It must equal `JIRA_REDIRECT_URI` exactly:
    - local dev (`pnpm start:dev` + Vite): `http://localhost:5173/jira/callback`
@@ -30,7 +30,7 @@ Everything a developer needs to run the Jira integration against a real Jira Clo
 
 **Team app (created 2026-10-21):** `BoardSync (dev)` in Pavlo's developer console, access type *Resource-level* (the user picks one site at consent), classic scopes `read:jira-work`, `write:jira-work`, `read:jira-user`, `manage:jira-webhook`, callback URLs `http://localhost:8090/jira/callback` (full stack with `WEB_PORT=8090`) and `http://localhost:5173/jira/callback` (`pnpm dev`). Distribution is **Not sharing**: only Pavlo's Atlassian account can approve the connect screen (see *Known limitation*). Ask Pavlo for the Client ID and Secret (section 3). Using another `WEB_PORT` means adding its callback URL in the console first.
 
-The backend requests `JIRA_SCOPES` (default `read:jira-work,write:jira-work,read:jira-user,offline_access`). Add `manage:jira-webhook` to `JIRA_SCOPES` when T-26 starts registering webhooks; it is a valid classic 3LO scope (the archived `jira-connection` design note that called it invalid is wrong). Every scope in `JIRA_SCOPES` must also be configured in the console, otherwise Atlassian rejects the authorise request.
+The backend requests `JIRA_SCOPES` (default `read:jira-work,write:jira-work,read:jira-user,manage:jira-webhook,offline_access`). `manage:jira-webhook` is a valid classic 3LO scope. Every scope in `JIRA_SCOPES` must also be configured in the console, otherwise Atlassian rejects the authorise request. Connections created before the scope was added must be reconnected before webhook registration can succeed.
 
 ## 3. Credentials: share, never commit
 
@@ -75,13 +75,24 @@ Jira Cloud cannot call `localhost`, so a public HTTPS tunnel forwards its webhoo
    ```
 
    It prints a URL such as `https://random-words.trycloudflare.com`. A quick tunnel gets a new URL on every start.
-2. Register the webhook in the sandbox: Jira settings (cog) → **System** → **WebHooks** → **Create a WebHook**
-   - URL: `https://<tunnel>/api/v1/jira/webhook?secret=<WEBHOOK_SECRET>` (the receiver checks the secret; the endpoint is built in T-26, until then you will see `404` in the tunnel log, which already proves delivery works)
-   - Events: *Issue created, updated, deleted* and *Comment created*
-   - JQL filter: `project = SBX`
-3. Move an issue in Jira and watch the tunnel output (`cloudflared` logs every request) or the backend log.
+2. Point the backend at it and restart:
 
-Later (T-26) the backend registers its own webhook through the REST API with the `manage:jira-webhook` scope, so step 2 becomes a fallback for local debugging.
+   ```bash
+   JIRA_WEBHOOK_URL=https://<tunnel>/api/v1/jira/webhook
+   ```
+
+   After a board is connected and its project key is imported, the backend registers a dynamic webhook through Jira's REST API. Reconnect boards whose connection predates `manage:jira-webhook`, and re-run the import after the tunnel URL changes.
+3. Move an issue in Jira. The receiver reads `issue.fields.status`, applies the stored status mapping or its status category, and moves the linked card. Watch the tunnel output (`cloudflared` logs every request) or the backend log.
+
+### Delivery authentication
+
+- Deliveries for a dynamic webhook registered by an OAuth 2.0 app carry `Authorization: Bearer <JWT>`, signed with the app's client secret; the receiver verifies it against `JIRA_CLIENT_SECRET`, issuer `JIRA_CLIENT_ID`, and `exp`.
+- `X-Hub-Signature: sha256=<hex>` carries HMAC-SHA256 of the exact raw request body using `WEBHOOK_SECRET`. If the header is present it takes precedence; an invalid HMAC is rejected and never retried as a JWT.
+- The old `?secret=` query parameter is not supported. Requests without either proof get `401`; the endpoint is public only in the sense that it is exempt from the app's bearer guard.
+
+### Webhook lifetime
+
+Dynamic webhooks expire 30 days after creation or the last refresh. Every six hours the backend refreshes rows expiring within seven days. Expired rows can be refreshed for up to three months, after which the backend registers a replacement. Set `JIRA_WEBHOOK_URL` to a stable HTTPS host outside local debugging; with a quick tunnel and no restart, the registered URL eventually goes stale.
 
 ## Checklist (T-14)
 
@@ -90,7 +101,7 @@ Later (T-26) the backend registers its own webhook through the REST API with the
 - [ ] Client ID and Secret shared through the password manager, present in everyone's `.env.local`
 - [ ] App distribution set to Sharing (blocked, see *Known limitation*)
 - [ ] Connect flow (section 4) succeeds against the sandbox
-- [ ] A webhook reaches a laptop through the tunnel (section 5)
+- [ ] A webhook reaches a laptop through the tunnel (section 5), either by backend registration or by a signed manual `curl`
 
 ## Known limitation: only the app owner can connect Jira
 

@@ -95,6 +95,7 @@ function setup(
   } as unknown as jest.Mocked<JiraGateway>;
   const statusRepo = {
     find: jest.fn().mockResolvedValue(options.stored ?? []),
+    findOne: jest.fn().mockResolvedValue(null),
     upsert: jest.fn().mockResolvedValue(undefined),
   };
   const connections = { exist: jest.fn().mockResolvedValue(options.connected ?? true) };
@@ -108,13 +109,15 @@ function setup(
     facade,
     gateway,
   );
+  const webhooks = { registerForBoard: jest.fn().mockResolvedValue(false) };
   const importer = new JiraImportService(
     links as unknown as Repository<JiraIssueMappingEntity>,
     facade,
     gateway,
     mappings,
+    webhooks as never,
   );
-  return { facade, gateway, statusRepo, links, mappings, importer };
+  return { facade, gateway, statusRepo, links, mappings, importer, webhooks };
 }
 
 describe('JiraStatusMappingService', () => {
@@ -196,6 +199,14 @@ describe('JiraStatusMappingService', () => {
 });
 
 describe('JiraImportService', () => {
+  it('registers the board webhook after storing the project key', async () => {
+    const { importer, webhooks } = setup({ summary: board('KAN') });
+
+    await importer.import('u', 'b1');
+
+    expect(webhooks.registerForBoard).toHaveBeenCalledWith('b1');
+  });
+
   it('links the project, imports every page through the facade and counts the outcomes', async () => {
     const { importer, facade, gateway, links } = setup();
     gateway.searchIssues

@@ -343,7 +343,7 @@ export class CardsService {
     boardId: string;
     jiraIssueKey: string;
     columnId: string;
-    position: number;
+    position?: number;
   }): Promise<'moved' | 'unchanged' | 'not-found'> {
     const { boardId, jiraIssueKey, columnId: targetColumnId, position: targetPosition } = input;
 
@@ -362,9 +362,14 @@ export class CardsService {
 
       const from = { columnId: current.columnId, position: current.position };
       const sameColumn = from.columnId === target.id;
+      // A status that maps to the card's current column did not move it; keep the user's order.
+      if (sameColumn && targetPosition === undefined) return 'unchanged';
       const count = await manager.count(CardEntity, { where: { columnId: target.id } });
       const maxPosition = sameColumn ? count - 1 : count;
-      const finalPosition = Math.min(Math.max(0, targetPosition), maxPosition);
+      const finalPosition =
+        targetPosition === undefined
+          ? maxPosition
+          : Math.min(Math.max(0, targetPosition), maxPosition);
 
       if (from.columnId === target.id && from.position === finalPosition) {
         return 'unchanged';

@@ -38,8 +38,8 @@ src/
 | Module | Responsibility | Status |
 | --- | --- | --- |
 | `auth` | Registration, login, JWT (≤ 1 h), global guard, `AUTH_FACADE` | ✅ Implemented (FR-01) |
-| `boards` | Boards, columns (ordering, min 3), cards, board roles, `BOARDS_FACADE` | ✅ Core implemented (FR-03, FR-04); ✅ Members and roles (FR-10); 🚧 Labels/comments (FR-08, FR-09) — KAN-41 |
-| `jira-sync` | OAuth 2.0 (3LO) connect flow, AES-256-GCM token vault, Jira gateway client, issue import | ✅ Connect/status/disconnect (FR-02); ✅ Token vault; ✅ Gateway client (T-23); ✅ Import and status mappings (FR-05); 🚧 Status sync (FR-06) — KAN-36; 🚧 Webhooks (FR-12) — KAN-37 |
+| `boards` | Boards, columns (ordering, min 3), cards, board roles, `BOARDS_FACADE` | ✅ Core implemented (FR-03, FR-04); ✅ Members and roles (FR-10); ✅ Labels and comments (FR-08, FR-09); ✅ Deadline reminders and notifications (T-32) |
+| `jira-sync` | OAuth 2.0 (3LO) connect flow, AES-256-GCM token vault, Jira gateway client, issue import | ✅ Connect/status/disconnect (FR-02); ✅ Token vault; ✅ Gateway client (T-23); ✅ Import, status mappings and project picker (FR-05); ✅ Board → Jira status sync (FR-06); ✅ Jira → board webhooks (FR-12) |
 | `realtime` | Socket.IO namespace `/realtime`, board rooms, event delivery | ✅ Transport (FR-11) |
 | `health` | `GET /api/v1/health` (database readiness) — reference module | ✅ Implemented |
 

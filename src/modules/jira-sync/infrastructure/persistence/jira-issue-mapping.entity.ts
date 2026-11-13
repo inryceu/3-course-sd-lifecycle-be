@@ -26,4 +26,8 @@ export class JiraIssueMappingEntity extends BaseEntity {
 
   @Column({ name: 'created_by_id', type: 'uuid', nullable: true })
   createdById: string | null;
+
+  /** `timestamp` (ms) of the last Jira webhook delivery applied; older deliveries are dropped. */
+  @Column({ name: 'last_jira_event_at', type: 'bigint', nullable: true })
+  lastJiraEventAt: string | null;
 }
