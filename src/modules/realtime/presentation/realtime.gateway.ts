@@ -28,6 +28,8 @@ interface SocketData {
  * - Handshake: a valid access token in `auth.token` (or an Authorization header) is required, the
  *   verification happens in a namespace middleware so an unauthenticated socket never connects.
  * - Rooms: `board:{boardId}` after an access check, and the personal room `user:{userId}`.
+ * - Heartbeat (ping interval/timeout) is set by RealtimeIoAdapter. The gateway keeps no
+ *   per-socket state besides `socket.data`; Socket.IO drops a closed socket from all its rooms.
  */
 @WebSocketGateway({ namespace: '/realtime' })
 export class RealtimeGateway implements OnGatewayInit {
@@ -71,6 +73,8 @@ export class RealtimeGateway implements OnGatewayInit {
     if (!(await this.boardAccess.canView(userId, boardId))) {
       return { ok: false, error: 'forbidden' };
     }
+    // ponytail: a removal committed between this check and the join is missed (one query wide);
+    // re-check canView after joining if that window ever matters.
     await client.join(boardRoom(boardId));
     return { ok: true };
   }
@@ -88,9 +92,25 @@ export class RealtimeGateway implements OnGatewayInit {
     return { ok: true };
   }
 
-  /** Delivers an event to every client in a room. */
-  emitToRoom(room: string, event: string, payload: unknown): void {
-    this.server.to(room).emit(event, payload);
+  /** Delivers an event once to every client in the room(s), except the socket `exceptSocketId`. */
+  emitToRoom(
+    room: string | string[],
+    event: string,
+    payload: unknown,
+    exceptSocketId?: string,
+  ): void {
+    const target = this.server.to(room);
+    (exceptSocketId ? target.except(exceptSocketId) : target).emit(event, payload);
+  }
+
+  /** Makes every socket in room `from` leave room `to`. */
+  leaveRoom(from: string, to: string): void {
+    this.server.in(from).socketsLeave(to);
+  }
+
+  /** True when `socketId` is a socket connected to this namespace by `userId`. */
+  isSocketOf(socketId: string, userId: string): boolean {
+    return (this.server.sockets.get(socketId)?.data as SocketData | undefined)?.userId === userId;
   }
 
   private async authenticate(socket: Socket): Promise<string | null> {

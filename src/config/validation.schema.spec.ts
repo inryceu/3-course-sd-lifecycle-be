@@ -142,6 +142,23 @@ describe('Configuration validation schema', () => {
     });
   });
 
+  describe('realtime heartbeat', () => {
+    it('defaults the ping interval to 25000 ms and the timeout to 20000 ms', () => {
+      const { value } = validate(validConfig);
+      expect(value.REALTIME_PING_INTERVAL_MS).toBe(25000);
+      expect(value.REALTIME_PING_TIMEOUT_MS).toBe(20000);
+    });
+
+    it.each(['REALTIME_PING_INTERVAL_MS', 'REALTIME_PING_TIMEOUT_MS'])(
+      'rejects a non-positive or fractional %s',
+      (key) => {
+        for (const value of [0, -1, 1.5, 'often']) {
+          expect(validate({ ...validConfig, [key]: value }).error).toBeDefined();
+        }
+      },
+    );
+  });
+
   describe('encryption key and secrets', () => {
     it.each([
       ['too short', '0123456789abcdef'],

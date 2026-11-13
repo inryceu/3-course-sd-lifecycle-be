@@ -49,8 +49,10 @@ function setup() {
     transaction: jest.fn((cb: (m: typeof manager) => Promise<unknown>) => cb(manager)),
   } as unknown as DataSource;
 
-  const service = new MembersService(dataSource, memberships, access, auth);
-  return { service, memberships, access, auth, dataSource };
+  const events = { publish: jest.fn().mockResolvedValue(undefined) };
+
+  const service = new MembersService(dataSource, memberships, access, auth, events);
+  return { service, memberships, access, auth, dataSource, events };
 }
 
 describe('MembersService', () => {
@@ -121,7 +123,7 @@ describe('MembersService', () => {
     });
 
     it('throws Conflict when trying to remove the last admin', async () => {
-      const { service, memberships } = setup();
+      const { service, memberships, events } = setup();
       memberships.findOne = jest.fn().mockResolvedValue({
         role: BoardRole.ADMIN,
         userId: 'user-2',
@@ -132,6 +134,42 @@ describe('MembersService', () => {
 
       await expect(service.remove('admin-id', 'board-id', 'user-2')).rejects.toThrow(
         'Cannot remove or demote the last admin',
+      );
+      expect(events.publish).not.toHaveBeenCalled();
+    });
+
+    it('publishes member.removed after the removal committed', async () => {
+      const { service, memberships, dataSource, events } = setup();
+      memberships.findOne = jest.fn().mockResolvedValue({
+        role: BoardRole.MEMBER,
+        userId: 'user-2',
+        boardId: 'board-id',
+        invitedAt: new Date(),
+      });
+      const order: string[] = [];
+      const transaction = dataSource.transaction as jest.Mock;
+      const runInTransaction = transaction.getMockImplementation();
+      transaction.mockImplementation(async (cb: unknown) => {
+        const result: unknown = await runInTransaction(cb);
+        order.push('commit');
+        return result;
+      });
+      events.publish.mockImplementation(() => {
+        order.push('publish');
+        return Promise.resolve();
+      });
+
+      await service.remove('admin-id', 'board-id', 'user-2');
+
+      expect(order).toEqual(['commit', 'publish']);
+      expect(events.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'member.removed',
+          boardId: 'board-id',
+          actorId: 'admin-id',
+          origin: 'user',
+          payload: { userId: 'user-2' },
+        }),
       );
     });
   });

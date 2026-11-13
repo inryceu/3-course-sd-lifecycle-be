@@ -58,6 +58,7 @@ describe('createEvent', () => {
         'card.moved',
         'card.updated',
         'notification.created',
+        'member.removed',
       ].sort(),
     );
   });

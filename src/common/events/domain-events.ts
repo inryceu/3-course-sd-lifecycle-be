@@ -13,6 +13,7 @@ export const DOMAIN_EVENT_TYPES = [
   'card.commented',
   'board.updated',
   'notification.created',
+  'member.removed',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -70,6 +71,7 @@ export interface EventPayloads {
   'card.commented': CommentSnapshot;
   'board.updated': { board: BoardSnapshot };
   'notification.created': { recipientId: string; notification: NotificationSnapshot };
+  'member.removed': { userId: string };
 }
 
 export interface DomainEventOf<T extends DomainEventType> {
