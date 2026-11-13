@@ -357,6 +357,8 @@ export class CardsService {
 
       const from = { columnId: current.columnId, position: current.position };
       const sameColumn = from.columnId === target.id;
+      // A status that maps to the card's current column did not move it; keep the user's order.
+      if (sameColumn && targetPosition === undefined) return 'unchanged';
       const count = await manager.count(CardEntity, { where: { columnId: target.id } });
       const maxPosition = sameColumn ? count - 1 : count;
       const finalPosition =

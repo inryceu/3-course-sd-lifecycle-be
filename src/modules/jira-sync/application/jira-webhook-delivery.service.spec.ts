@@ -21,7 +21,6 @@ describe('JiraWebhookDeliveryService', () => {
 
     await expect(service.claim('k1', now)).resolves.toBe(true);
 
-    expect(query.mock.calls[0][0]).toContain('DELETE FROM jira_webhook_deliveries');
     const insert = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO'));
     expect(insert?.[1]).toEqual(['k1', now, new Date(now.getTime() + DELIVERY_RETENTION_MS)]);
   });
@@ -31,7 +30,7 @@ describe('JiraWebhookDeliveryService', () => {
     query.mockResolvedValue([]);
 
     await expect(service.claim('k1')).resolves.toBe(false);
-    expect(query).toHaveBeenCalledTimes(3);
+    expect(query).toHaveBeenCalledTimes(2);
   });
 
   it('reclaims a processing row older than five minutes', async () => {

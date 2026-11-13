@@ -1,11 +1,6 @@
 import { createHash } from 'crypto';
 import { BadRequestException } from '@nestjs/common';
-
-export interface JiraWebhookStatusSnapshot {
-  readonly id: string;
-  readonly name: string;
-  readonly categoryKey: string;
-}
+import { JiraStatus } from './jira-gateway.port';
 
 export type ParsedJiraWebhook =
   | { readonly kind: 'ignored'; readonly event: string; readonly timestamp: string | null }
@@ -15,8 +10,10 @@ export type ParsedJiraWebhook =
       readonly timestamp: string | null;
       readonly issueId: string;
       readonly issueKey: string;
+      /** `issue.self`, the REST URL on the Jira site that sent the delivery. */
+      readonly issueSelf: string | null;
       readonly changelogId: string | null;
-      readonly status: JiraWebhookStatusSnapshot;
+      readonly status: JiraStatus;
     };
 
 export function parseJiraWebhookPayload(body: unknown): ParsedJiraWebhook {
@@ -25,7 +22,7 @@ export function parseJiraWebhookPayload(body: unknown): ParsedJiraWebhook {
   }
 
   const event = body['webhookEvent'];
-  const timestamp = typeof body['timestamp'] === 'number' ? String(body['timestamp']) : null;
+  const timestamp = Number.isSafeInteger(body['timestamp']) ? String(body['timestamp']) : null;
   if (event !== 'jira:issue_updated') {
     return { kind: 'ignored', event, timestamp };
   }
@@ -71,6 +68,7 @@ export function parseJiraWebhookPayload(body: unknown): ParsedJiraWebhook {
     timestamp,
     issueId,
     issueKey,
+    issueSelf: typeof issue['self'] === 'string' ? issue['self'] : null,
     changelogId:
       typeof changelogId === 'string' || typeof changelogId === 'number'
         ? String(changelogId)
@@ -78,17 +76,21 @@ export function parseJiraWebhookPayload(body: unknown): ParsedJiraWebhook {
     status: {
       id: status['id'],
       name: typeof status['name'] === 'string' ? status['name'] : status['id'],
-      categoryKey: isRecord(category) && typeof category['key'] === 'string' ? category['key'] : '',
+      statusCategory: {
+        id: isRecord(category) && typeof category['id'] === 'number' ? category['id'] : 0,
+        key: isRecord(category) && typeof category['key'] === 'string' ? category['key'] : '',
+        name: isRecord(category) && typeof category['name'] === 'string' ? category['name'] : '',
+      },
     },
   };
 }
 
-export function buildDeliveryKey(
-  identifier: string | undefined,
-  payload: ParsedJiraWebhook,
-  rawBody: Buffer,
-): string {
-  if (identifier) return identifier;
+/**
+ * Dedup key from signed content only. `X-Atlassian-Webhook-Identifier` is not covered by the
+ * signature, so a replay could pick a fresh one; event + issue id + changelog id is stable across
+ * Jira retries and part of the signed body.
+ */
+export function buildDeliveryKey(payload: ParsedJiraWebhook, rawBody: Buffer): string {
   if (payload.kind === 'status' && payload.changelogId !== null) {
     return createHash('sha256')
       .update(`${payload.event}|${payload.issueId}|${payload.changelogId}`)

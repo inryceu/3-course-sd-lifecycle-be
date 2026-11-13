@@ -10,8 +10,8 @@ export const DELIVERY_CLAIM_STALE_MS = 5 * 60 * 1000;
 export class JiraWebhookDeliveryService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
+  /** Expired rows are removed by the lifecycle sweep, not on every claim. */
   async claim(deliveryKey: string, now = new Date()): Promise<boolean> {
-    await this.deleteExpired(now);
     const expiresAt = new Date(now.getTime() + DELIVERY_RETENTION_MS);
 
     const inserted = await this.dataSource.query<JiraWebhookDeliveryEntity[]>(
@@ -25,8 +25,11 @@ export class JiraWebhookDeliveryService {
     if (inserted.length > 0) return true;
 
     const staleBefore = new Date(now.getTime() - DELIVERY_CLAIM_STALE_MS);
+    // Wrapped in a CTE: TypeORM returns `[rows, rowCount]` for a bare UPDATE, whose length is
+    // always 2, which made every duplicate look reclaimed.
     const reclaimed = await this.dataSource.query<JiraWebhookDeliveryEntity[]>(
-      `UPDATE jira_webhook_deliveries
+      `WITH reclaimed AS (
+       UPDATE jira_webhook_deliveries
           SET status = 'processing',
               attempts = attempts + 1,
               claimed_at = $2,
@@ -35,7 +38,9 @@ export class JiraWebhookDeliveryService {
         WHERE delivery_key = $1
           AND status = 'processing'
           AND claimed_at < $4
-        RETURNING delivery_key`,
+        RETURNING delivery_key
+       )
+       SELECT delivery_key FROM reclaimed`,
       [deliveryKey, now, expiresAt, staleBefore],
     );
     return reclaimed.length > 0;

@@ -10,6 +10,7 @@ function payload(overrides: Record<string, unknown> = {}): Record<string, unknow
     timestamp: 1_700_000_000_000,
     issue: {
       id: '10001',
+      self: 'https://team.atlassian.net/rest/api/2/issue/10001',
       key: 'KAN-7',
       fields: {
         status: {
@@ -37,8 +38,13 @@ describe('parseJiraWebhookPayload', () => {
       timestamp: '1700000000000',
       issueId: '10001',
       issueKey: 'KAN-7',
+      issueSelf: 'https://team.atlassian.net/rest/api/2/issue/10001',
       changelogId: '90001',
-      status: { id: '3', name: 'In Progress', categoryKey: 'indeterminate' },
+      status: {
+        id: '3',
+        name: 'In Progress',
+        statusCategory: { id: 4, key: 'indeterminate', name: 'In Progress' },
+      },
     });
   });
 
@@ -68,26 +74,24 @@ describe('parseJiraWebhookPayload', () => {
   ])('rejects malformed input: %s', (_label, body) => {
     expect(() => parseJiraWebhookPayload(body)).toThrow(BadRequestException);
   });
+
+  it('ignores a timestamp that is not an integer', () => {
+    expect(parseJiraWebhookPayload(payload({ timestamp: 1.5 })).timestamp).toBeNull();
+  });
 });
 
 describe('buildDeliveryKey', () => {
   const parsed = parseJiraWebhookPayload(payload());
 
-  it('prefers the Atlassian delivery identifier', () => {
-    expect(buildDeliveryKey('identifier-1', parsed, raw)).toBe('identifier-1');
-  });
-
   it('hashes event, issue id and changelog id without timestamps', () => {
     const expected = createHash('sha256').update('jira:issue_updated|10001|90001').digest('hex');
-    expect(buildDeliveryKey(undefined, parsed, raw)).toBe(expected);
+    expect(buildDeliveryKey(parsed, raw)).toBe(expected);
   });
 
   it('falls back to the raw body when there is no changelog id', () => {
     const noChangelog = parseJiraWebhookPayload(
       payload({ changelog: { items: [{ field: 'status' }] } }),
     );
-    expect(buildDeliveryKey(undefined, noChangelog, raw)).toBe(
-      createHash('sha256').update(raw).digest('hex'),
-    );
+    expect(buildDeliveryKey(noChangelog, raw)).toBe(createHash('sha256').update(raw).digest('hex'));
   });
 });

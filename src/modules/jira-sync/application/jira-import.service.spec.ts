@@ -116,44 +116,6 @@ function setup(
   return { facade, gateway, statusRepo, links, mappings, importer, webhooks };
 }
 
-describe('JiraStatusMappingService.resolveForWebhook', () => {
-  it('uses a stored mapping', async () => {
-    const { mappings, statusRepo } = setup({ summary: board('KAN') });
-    statusRepo.findOne.mockResolvedValue({ columnId: 'col-done' });
-
-    await expect(
-      mappings.columnForStatus('b1', { id: '3', categoryKey: 'indeterminate' }),
-    ).resolves.toBe('col-done');
-  });
-
-  it.each([
-    ['new', 'col-todo'],
-    ['indeterminate', 'col-doing'],
-    ['done', 'col-done'],
-  ])('defaults category %s to %s', async (categoryKey, expected) => {
-    const { mappings } = setup({ summary: board('KAN') });
-
-    await expect(mappings.columnForStatus('b1', { id: '3', categoryKey })).resolves.toBe(expected);
-  });
-
-  it('falls back to the category when the mapped column was deleted', async () => {
-    const { mappings, statusRepo } = setup({ summary: board('KAN') });
-    statusRepo.findOne.mockResolvedValue({ columnId: 'deleted-column' });
-
-    await expect(mappings.columnForStatus('b1', { id: '3', categoryKey: 'done' })).resolves.toBe(
-      'col-done',
-    );
-  });
-
-  it('returns null when the board no longer exists', async () => {
-    const { mappings } = setup({ summary: null });
-
-    await expect(
-      mappings.columnForStatus('b1', { id: '3', categoryKey: 'done' }),
-    ).resolves.toBeNull();
-  });
-});
-
 describe('JiraStatusMappingService', () => {
   it('defaults by status category and marks the defaults', async () => {
     const { mappings } = setup({ summary: board('KAN') });
