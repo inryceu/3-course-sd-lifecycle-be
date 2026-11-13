@@ -29,6 +29,32 @@ export const toCommentSnapshot = (c: CommentEntity): CommentSnapshot => ({
   createdAt: c.createdAt.toISOString(),
 });
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CURSOR_TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$/;
+/** `createdAt` in UTC with microseconds, as text from Postgres: a JS Date would drop them. */
+const CREATED_AT_TEXT = `to_char(c."createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')`;
+
+/** The cursor is a position (card, createdAt, id), so it survives deletion of its comment. */
+const encodeCursor = (cardId: string, ts: string, id: string): string =>
+  Buffer.from(`${cardId}|${ts}|${id}`).toString('base64url');
+
+function decodeCursor(cursor: string, cardId: string): { ts: string; id: string } {
+  const [card, ts = '', id = '', ...rest] = Buffer.from(cursor, 'base64url')
+    .toString('utf8')
+    .split('|');
+  // the round trip rejects dates like 2026-02-30 or 2026-13-01, which Postgres would answer with a 500
+  const date = new Date(`${ts}Z`);
+  const valid =
+    rest.length === 0 &&
+    card?.toLowerCase() === cardId.toLowerCase() &&
+    UUID.test(id) &&
+    CURSOR_TS.test(ts) &&
+    !Number.isNaN(date.getTime()) &&
+    date.toISOString().slice(0, 23) === ts.slice(0, 23);
+  if (!valid) throw new BadRequestException('Invalid cursor');
+  return { ts, id };
+}
+
 @Injectable()
 export class CommentsService {
   constructor(
@@ -48,26 +74,26 @@ export class CommentsService {
 
     const qb = this.comments
       .createQueryBuilder('c')
-      .where('c.cardId = :cardId', { cardId })
+      .addSelect(CREATED_AT_TEXT, 'cursor_ts')
+      .where('c.cardId = :cardId', { cardId: card.id })
       .orderBy('c.createdAt', 'ASC')
       .addOrderBy('c.id', 'ASC')
-      .take(take + 1);
+      .limit(take + 1);
 
     if (cursor) {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(cursor)) {
-        throw new BadRequestException('Invalid cursor');
-      }
-      qb.andWhere(
-        '(c."createdAt", c.id) > (SELECT x."createdAt", x.id FROM comments x WHERE x.id = :cursor)',
-        { cursor },
-      );
+      const { ts, id } = decodeCursor(cursor, card.id);
+      qb.andWhere(`(c."createdAt", c.id) > ((:ts)::timestamp AT TIME ZONE 'UTC', (:id)::uuid)`, {
+        ts,
+        id,
+      });
     }
 
-    const results = await qb.getMany();
-    const hasNext = results.length > take;
-    const items = hasNext ? results.slice(0, take) : results;
-    const nextCursor = hasNext ? items[items.length - 1].id : null;
+    const { entities, raw } = await qb.getRawAndEntities<{ cursor_ts: string }>();
+    const hasNext = entities.length > take;
+    const items = hasNext ? entities.slice(0, take) : entities;
+    const nextCursor = hasNext
+      ? encodeCursor(card.id, raw[take - 1].cursor_ts, items[take - 1].id)
+      : null;
 
     return {
       items: items.map(toCommentSnapshot),
