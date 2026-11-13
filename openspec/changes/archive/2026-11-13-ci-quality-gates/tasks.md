@@ -20,4 +20,4 @@
 
 ## 5. Verification
 
-- [ ] 5.1 Push `KAN-51` in both repos, open PRs, and confirm all five checks are green and the `coverage` artifact is listed on the run
+- [x] 5.1 Push `KAN-51` in both repos, open PRs, and confirm all five checks are green and the `coverage` artifact is listed on the run
