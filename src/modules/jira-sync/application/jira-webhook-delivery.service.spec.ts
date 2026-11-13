@@ -59,6 +59,17 @@ describe('JiraWebhookDeliveryService', () => {
     expect(update?.[0]).toContain('attempts = attempts + 1');
   });
 
+  it('does not run the retention cleanup on every claim', async () => {
+    const { service, query } = setup();
+
+    await service.claim('k1');
+
+    expect(query).not.toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM jira_webhook_deliveries'),
+      expect.anything(),
+    );
+  });
+
   it('marks a claimed delivery as processed', async () => {
     const { service, query } = setup();
 

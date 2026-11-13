@@ -15,6 +15,7 @@ import {
   RegisterWebhookInput,
   SearchIssuesInput,
 } from '../src/modules/jira-sync/application/jira-gateway.port';
+import { JiraWebhookDeliveryService } from '../src/modules/jira-sync/application/jira-webhook-delivery.service';
 import { JiraConnectionEntity } from '../src/modules/jira-sync/infrastructure/persistence/jira-connection.entity';
 import { BoardBody, bearer, createBoard, PREFIX, registerUser, TestUser } from './helpers';
 
@@ -106,13 +107,21 @@ describe('Jira webhook receiver (e2e)', () => {
   let admin: TestUser;
   let board: BoardBody;
   let events: DomainEvent[];
+  let clock = Date.now();
+  const SITE = 'https://team.atlassian.net';
 
-  const payload = (statusId: string, statusName: string, category: string) =>
+  const payload = (
+    statusId: string,
+    statusName: string,
+    category: string,
+    options: { site?: string; timestamp?: number; changelogId?: string } = {},
+  ) =>
     JSON.stringify({
       webhookEvent: 'jira:issue_updated',
-      timestamp: Date.now(),
+      timestamp: options.timestamp ?? (clock += 1000),
       issue: {
         id: '10001',
+        self: `${options.site ?? SITE}/rest/api/2/issue/10001`,
         key: 'WHK-1',
         fields: {
           status: {
@@ -123,7 +132,7 @@ describe('Jira webhook receiver (e2e)', () => {
         },
       },
       changelog: {
-        id: `change-${statusId}`,
+        id: options.changelogId ?? `change-${statusId}`,
         items: [{ field: 'status', fieldId: 'status', fromString: 'To Do', toString: statusName }],
       },
     });
@@ -131,9 +140,44 @@ describe('Jira webhook receiver (e2e)', () => {
   const signature = (raw: string) =>
     `sha256=${createHmac('sha256', secret).update(raw).digest('hex')}`;
 
-  const boardDetail = async () =>
-    (await request(server).get(`${PREFIX}/boards/${board.id}`).set(bearer(admin)).expect(200))
+  const boardDetail = async (boardId = board.id) =>
+    (await request(server).get(`${PREFIX}/boards/${boardId}`).set(bearer(admin)).expect(200))
       .body as BoardBody;
+
+  /** Column type that currently holds WHK-1 on the board. */
+  const columnOfIssue = async (boardId = board.id) =>
+    (await boardDetail(boardId)).columns.find((column) =>
+      column.cards?.some((card) => card.jiraIssueKey === 'WHK-1'),
+    )?.type;
+
+  const deliver = (raw: string, identifier: string) =>
+    request(server)
+      .post(`${PREFIX}/jira/webhook`)
+      .set('Content-Type', 'application/json')
+      .set('X-Hub-Signature', signature(raw))
+      .set('X-Atlassian-Webhook-Identifier', identifier)
+      .send(raw)
+      .expect(200);
+
+  const connectAndImport = async (boardId: string, siteUrl: string, cloudId: string) => {
+    await dataSource.getRepository(JiraConnectionEntity).save({
+      boardId,
+      connectedById: admin.id,
+      cloudId,
+      siteUrl,
+      accessTokenEnc: 'enc',
+      refreshTokenEnc: 'enc',
+      expiresAt: new Date(Date.now() + 3600_000),
+      scopes: ['read:jira-work', 'write:jira-work', 'manage:jira-webhook', 'offline_access'],
+      connectedAt: new Date(),
+    });
+    jira.setStatus(TODO);
+    await request(server)
+      .post(`${PREFIX}/jira/import`)
+      .set(bearer(admin))
+      .send({ boardId, projectKey: 'WHK' })
+      .expect(200);
+  };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -230,9 +274,137 @@ describe('Jira webhook receiver (e2e)', () => {
 
     await request(server).post(`${PREFIX}/jira/webhook`).set(headers).send(raw).expect(200);
     const firstMoveCount = events.length;
+    expect(firstMoveCount).toBe(1);
     await request(server).post(`${PREFIX}/jira/webhook`).set(headers).send(raw).expect(200);
 
     expect(events).toHaveLength(firstMoveCount);
+  });
+
+  it('refuses a second claim of a stored delivery key', async () => {
+    const deliveries = app.get(JiraWebhookDeliveryService);
+
+    await expect(deliveries.claim('e2e-stored-key')).resolves.toBe(true);
+    await expect(deliveries.claim('e2e-stored-key')).resolves.toBe(false);
+  });
+
+  it('ignores a redelivered or replayed delivery after the user moved the card', async () => {
+    const raw = payload('9', 'Done', 'done', { changelogId: 'change-replay' });
+    await deliver(raw, 'delivery-replay-original');
+    expect(await columnOfIssue()).toBe('DONE');
+
+    const detail = await boardDetail();
+    const card = detail.columns
+      .flatMap((column) => column.cards ?? [])
+      .find((candidate) => candidate.jiraIssueKey === 'WHK-1');
+    const todo = detail.columns.find((column) => column.type === 'TODO');
+    await request(server)
+      .patch(`${PREFIX}/cards/${card?.id}/move`)
+      .set(bearer(admin))
+      .send({ columnId: todo?.id, position: 0 })
+      .expect(200);
+    events = [];
+
+    await deliver(raw, 'delivery-replay-original');
+    await deliver(raw, 'delivery-replay-new-identifier');
+
+    expect(await columnOfIssue()).toBe('TODO');
+    expect(events).toHaveLength(0);
+  });
+
+  it('drops an older delivery that arrives after a newer one', async () => {
+    const older = payload('3', 'In Progress', 'indeterminate', {
+      timestamp: (clock += 1000),
+      changelogId: 'change-older',
+    });
+    const newer = payload('9', 'Done', 'done', {
+      timestamp: (clock += 1000),
+      changelogId: 'change-newer',
+    });
+
+    await deliver(newer, 'delivery-newer');
+    expect(await columnOfIssue()).toBe('DONE');
+    events = [];
+    await deliver(older, 'delivery-older');
+
+    expect(await columnOfIssue()).toBe('DONE');
+    expect(events).toHaveLength(0);
+  });
+
+  describe('with several boards importing the same project', () => {
+    let otherSite: BoardBody;
+    let sameSite: BoardBody;
+
+    beforeAll(async () => {
+      otherSite = await createBoard(app, admin, 'Other site board');
+      await connectAndImport(otherSite.id, 'https://other.atlassian.net', 'cloud-2');
+      sameSite = await createBoard(app, admin, 'Same site board');
+      await connectAndImport(sameSite.id, SITE, 'cloud-1');
+    });
+
+    it('moves only the board connected to the sending site', async () => {
+      const before = await columnOfIssue();
+
+      await deliver(
+        payload('3', 'In Progress', 'indeterminate', {
+          site: 'https://other.atlassian.net',
+          changelogId: 'change-other-site',
+        }),
+        'delivery-other-site',
+      );
+
+      expect(await columnOfIssue(otherSite.id)).toBe('IN_PROGRESS');
+      expect(await columnOfIssue()).toBe(before);
+      expect(await columnOfIssue(sameSite.id)).toBe('TODO');
+      expect(events.map((event) => event.boardId)).toEqual([otherSite.id]);
+    });
+
+    it('moves the card on every board of the sending site', async () => {
+      await deliver(
+        payload('3', 'In Progress', 'indeterminate', { changelogId: 'change-both-boards' }),
+        'delivery-both-boards',
+      );
+
+      expect(await columnOfIssue()).toBe('IN_PROGRESS');
+      expect(await columnOfIssue(sameSite.id)).toBe('IN_PROGRESS');
+      expect(events.map((event) => event.boardId).sort()).toEqual([board.id, sameSite.id].sort());
+    });
+
+    it('does not move a board that was relinked to another project', async () => {
+      await dataSource.query('UPDATE boards SET "jiraProjectKey" = $1 WHERE id = $2', [
+        'OTHER',
+        board.id,
+      ]);
+      try {
+        await deliver(
+          payload('9', 'Done', 'done', { changelogId: 'change-relinked' }),
+          'delivery-relinked',
+        );
+      } finally {
+        await dataSource.query('UPDATE boards SET "jiraProjectKey" = $1 WHERE id = $2', [
+          'WHK',
+          board.id,
+        ]);
+      }
+
+      expect(await columnOfIssue()).toBe('IN_PROGRESS');
+      expect(await columnOfIssue(sameSite.id)).toBe('DONE');
+    });
+
+    it('ignores deliveries for a board after it disconnects Jira', async () => {
+      await request(server)
+        .delete(`${PREFIX}/jira/connection`)
+        .query({ boardId: board.id })
+        .set(bearer(admin))
+        .expect((response) => expect(response.status).toBeLessThan(300));
+
+      await deliver(
+        payload('1', 'To Do', 'new', { changelogId: 'change-after-disconnect' }),
+        'delivery-after-disconnect',
+      );
+
+      expect(await columnOfIssue()).toBe('IN_PROGRESS');
+      expect(await columnOfIssue(sameSite.id)).toBe('TODO');
+    });
   });
 
   it('rejects an invalid signature with 401', async () => {

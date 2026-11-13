@@ -172,6 +172,20 @@ describe('CardsService - Move and Ordering', () => {
     expect(publisher.publish).not.toHaveBeenCalled();
   });
 
+  it('keeps the position and publishes nothing when the status maps to the current column', async () => {
+    const { service, publisher, current } = externalSetup({
+      count: 3,
+      target: { id: 'col-1', boardId: 'b1' },
+    });
+
+    await expect(
+      service.moveFromExternal({ boardId: 'b1', jiraIssueKey: 'KAN-1', columnId: 'col-1' }),
+    ).resolves.toBe('unchanged');
+
+    expect((current as { moveTo: jest.Mock }).moveTo).not.toHaveBeenCalled();
+    expect(publisher.publish).not.toHaveBeenCalled();
+  });
+
   it('reports not-found when the card or target column is missing', async () => {
     const missingCard = externalSetup({ current: null });
     await expect(

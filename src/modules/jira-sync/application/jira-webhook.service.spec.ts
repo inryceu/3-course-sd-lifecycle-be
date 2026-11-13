@@ -175,6 +175,25 @@ describe('JiraWebhookService', () => {
     expect(ctx.boards.moveCardFromExternal).toHaveBeenCalledTimes(2);
   });
 
+  it('derives the same delivery key for a replay with a different identifier header', async () => {
+    const ctx = setup();
+
+    await ctx.service.receive(RAW, BODY, { 'x-atlassian-webhook-identifier': 'delivery-1' });
+    await ctx.service.receive(RAW, BODY, { 'x-atlassian-webhook-identifier': 'replayed-2' });
+
+    const [first, second] = ctx.deliveries.claim.mock.calls.map(([key]) => key as string);
+    expect(second).toBe(first);
+  });
+
+  it('names the board in the receive log line', async () => {
+    const ctx = setup();
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+
+    await ctx.service.receive(RAW, BODY, HEADERS);
+
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('board-1'));
+  });
+
   it('uses the status snapshot from the payload regardless of delivery order', async () => {
     const ctx = setup();
     const outOfOrder = {
