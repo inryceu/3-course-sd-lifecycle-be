@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth';
 import { ATLASSIAN_OAUTH } from './application/atlassian-oauth.port';
 import { JIRA_GATEWAY } from './application/jira-gateway.port';
+import { JiraCommentSyncListener } from './application/jira-comment-sync.listener';
+import { JiraCommentSyncService } from './application/jira-comment-sync.service';
 import { JiraConnectionService } from './application/jira-connection.service';
 import { JiraImportService } from './application/jira-import.service';
 import { JiraStatusMappingService } from './application/jira-status-mapping.service';
@@ -55,6 +57,8 @@ import { BoardsModule } from '../boards';
     JiraStatusMappingService,
     JiraStatusSyncService,
     JiraStatusSyncListener,
+    JiraCommentSyncService,
+    JiraCommentSyncListener,
     JiraWebhookAuthenticityService,
     JiraWebhookDeliveryService,
     JiraWebhookLifecycleService,

@@ -305,6 +305,8 @@ export interface AddCommentInput {
   readonly issueIdOrKey: string;
   /** ADF comment body. */
   readonly body: JiraCommentBody;
+  /** Optional per-call budget, capped by the client's configured budget. */
+  readonly timeBudgetMs?: number;
 }
 
 /** The created comment. */

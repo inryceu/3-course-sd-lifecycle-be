@@ -54,4 +54,6 @@ export interface BoardsFacade {
    */
   upsertCardFromExternal(input: ExternalCardInput): Promise<ExternalUpsertResult>;
   moveCardFromExternal(input: ExternalCardMove): Promise<'moved' | 'unchanged' | 'not-found'>;
+  /** Marks the comment as synced only when it belongs to the given card. */
+  markCommentSynced(cardId: string, commentId: string): Promise<void>;
 }
