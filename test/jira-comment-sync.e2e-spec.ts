@@ -39,31 +39,56 @@ interface CommentView {
   syncedToJira: boolean;
 }
 
+interface DeferredComment {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (error: Error) => void;
+}
+
 class FakeJira {
   readonly addCommentCalls: AddCommentInput[] = [];
   addCommentError: Error | null = null;
   private nextId = 1;
+  private deferred: DeferredComment | null = null;
 
   reset(): void {
     this.addCommentCalls.length = 0;
     this.addCommentError = null;
     this.nextId = 1;
+    this.deferred = null;
   }
 
-  addComment(input: AddCommentInput): Promise<AddCommentResult> {
+  deferNext(): DeferredComment {
+    let resolve: () => void = () => undefined;
+    let reject: (error: Error) => void = () => undefined;
+    const promise = new Promise<void>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    const deferred = { promise, resolve, reject };
+    this.deferred = deferred;
+    return deferred;
+  }
+
+  async addComment(input: AddCommentInput): Promise<AddCommentResult> {
     this.addCommentCalls.push(input);
+    const deferred = this.deferred;
+    this.deferred = null;
+    if (deferred !== null) {
+      await deferred.promise;
+    }
     if (this.addCommentError !== null) {
-      return Promise.reject(this.addCommentError);
+      throw this.addCommentError;
     }
     const id = String(20_000 + this.nextId++);
-    return Promise.resolve({
+    return {
       id,
       self: `https://example.test/rest/api/3/issue/10001/comment/${id}`,
       author: { accountId: 'bot', displayName: 'BoardSync', active: true },
       body: input.body,
       created: '2026-10-01T10:00:00.000Z',
       updated: '2026-10-01T10:00:00.000Z',
-    });
+    };
   }
 }
 
@@ -101,6 +126,15 @@ describe('Jira comment sync (e2e)', () => {
       await sleep(25);
     }
     throw new Error(`No sync log was written for card ${cardId}`);
+  };
+
+  const waitForAddCommentCall = async (count: number): Promise<void> => {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      if (jira.addCommentCalls.length >= count) return;
+      await sleep(10);
+    }
+    throw new Error(`Expected ${count} addComment calls, got ${jira.addCommentCalls.length}`);
   };
 
   const waitForCommentFlag = async (
@@ -185,6 +219,67 @@ describe('Jira comment sync (e2e)', () => {
       plainTextToAdf(`[BoardSync] ${ADMIN_NAME}: ${text}`),
     );
     await waitForCommentFlag(card.id, commentId, true);
+  });
+
+  it('returns 201 before Jira finishes and completes the mirror afterward', async () => {
+    const { card, issueKey, mappingId } = await linkedCard();
+    const text = 'Slow but eventually mirrored';
+    const deferred = jira.deferNext();
+
+    const response = await postComment(admin, card.id, text).expect(201);
+    const commentId = (response.body as CommentView).id;
+    expect((response.body as CommentView).syncedToJira).toBe(false);
+
+    await waitForAddCommentCall(1);
+    expect(jira.addCommentCalls[0].body).toEqual(
+      plainTextToAdf(`[BoardSync] ${ADMIN_NAME}: ${text}`),
+    );
+    await expect(logsFor(card.id)).resolves.toHaveLength(0);
+
+    deferred.resolve();
+
+    const row = await waitForLog(card.id);
+    expect(row).toMatchObject({
+      direction: SyncDirection.TO_JIRA,
+      status: SyncStatus.SUCCESS,
+      mappingId,
+      errorMessage: null,
+      payload: {
+        commentId,
+        cardId: card.id,
+        issueKey,
+        jiraCommentId: '20001',
+        latencyMs: expect.any(Number),
+      },
+    });
+    await waitForCommentFlag(card.id, commentId, true);
+  });
+
+  it('keeps the 201 response when the deferred mirror rejects', async () => {
+    const { card, issueKey, mappingId } = await linkedCard();
+    const deferred = jira.deferNext();
+
+    const response = await postComment(admin, card.id, 'Deferred failure').expect(201);
+    const commentId = (response.body as CommentView).id;
+
+    await waitForAddCommentCall(1);
+    deferred.reject(new JiraServerError(503, 1, 1));
+
+    const row = await waitForLog(card.id);
+    expect(row).toMatchObject({
+      direction: SyncDirection.TO_JIRA,
+      status: SyncStatus.FAILED,
+      mappingId,
+      errorMessage: expect.stringContaining('Jira server error'),
+      payload: {
+        commentId,
+        cardId: card.id,
+        issueKey,
+        reason: 'jira error',
+        latencyMs: expect.any(Number),
+      },
+    });
+    await waitForCommentFlag(card.id, commentId, false);
   });
 
   it('does not mirror a Jira-originated comment', async () => {

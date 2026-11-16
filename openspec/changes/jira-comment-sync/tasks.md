@@ -29,9 +29,9 @@
 
 ## 6. Integration behavior
 
-- [ ] 6.1 Run the 1.4 E2E suite against real Postgres and fix the implementation until all four required cases pass; verify `pnpm test:e2e -- jira-comment-sync.e2e-spec.ts`
-- [ ] 6.2 Extend the E2E suite so the stubbed `JIRA_GATEWAY.addComment` returns a manually controlled deferred promise; assert that `POST /cards/{cardId}/comments` returns 201 while that promise is still pending, then resolve it and verify the sync completes; also assert a rejected `addComment` does not change the 201 result; verify the same E2E suite
-- [ ] 6.3 Run the existing `test/labels-comments.e2e-spec.ts` regression suite to confirm comment creation, paging and deletion still behave as before; verify `pnpm test:e2e -- labels-comments.e2e-spec.ts`
+- [x] 6.1 Run the 1.4 E2E suite against real Postgres and fix the implementation until all four required cases pass; verify `pnpm test:e2e -- jira-comment-sync.e2e-spec.ts`
+- [x] 6.2 Extend the E2E suite so the stubbed `JIRA_GATEWAY.addComment` returns a manually controlled deferred promise; assert that `POST /cards/{cardId}/comments` returns 201 while that promise is still pending, then resolve it and verify the sync completes; also assert a rejected `addComment` does not change the 201 result; verify the same E2E suite
+- [x] 6.3 Run the existing `test/labels-comments.e2e-spec.ts` regression suite to confirm comment creation, paging and deletion still behave as before; verify `pnpm test:e2e -- labels-comments.e2e-spec.ts`
 
 ## 7. Documentation
 
