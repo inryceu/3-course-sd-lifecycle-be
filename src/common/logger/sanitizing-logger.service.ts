@@ -14,9 +14,7 @@ const SECRET_KEYS = [
 ];
 
 const SECRET_KEY_PATTERN = SECRET_KEYS.join('|');
-const SECRET_KEY_LOOKAHEAD = `(?=\\s*(?:${SECRET_KEY_PATTERN})[=:]|[,\\n}]|$)`;
-
-const SECRET_PATTERN = new RegExp(`(${SECRET_KEY_PATTERN})[=:].*?${SECRET_KEY_LOOKAHEAD}`, 'gi');
+const SECRET_PATTERN = new RegExp(`(${SECRET_KEY_PATTERN})[=:][^,\\n}]*`, 'gi');
 
 /**
  * Wraps NestJS `Logger` and redacts known secret keys from every log write
@@ -37,7 +35,11 @@ export class SanitizingLoggerService implements LoggerService {
   }
 
   error(message: string, trace?: string, context?: string): void {
-    this.logger.error(this.sanitize(message), this.sanitize(trace), this.sanitize(context));
+    this.logger.error(
+      this.sanitize(message),
+      this.sanitize(trace),
+      this.sanitize(context),
+    );
   }
 
   warn(message: string, context?: string): void {
