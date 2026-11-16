@@ -495,7 +495,7 @@ describe('JiraGatewayHttpClient addComment budget', () => {
       issueIdOrKey: 'KAN-1',
       body: plainTextToAdf('hello'),
       ...(timeBudgetMs === undefined ? {} : { timeBudgetMs }),
-    } as AddCommentInput;
+    };
   }
 
   it('caps the per-request timeout by a shortened caller budget', async () => {

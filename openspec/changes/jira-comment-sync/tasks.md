@@ -13,7 +13,7 @@
 
 ## 3. Gateway add-comment budget
 
-- [ ] 3.1 Add optional `timeBudgetMs` to `AddCommentInput`, thread it through the add-comment `RequestSpec`, and cap the effective budget with `Math.min(requested, configured)`; keep the POST non-idempotent with no 5xx/timeout retries beyond the existing connection-phase exception; verify the 1.1 tests pass with `pnpm test -- jira-gateway.http-client.spec.ts`
+- [x] 3.1 Add optional `timeBudgetMs` to `AddCommentInput`, thread it through the add-comment `RequestSpec`, and cap the effective budget with `Math.min(requested, configured)`; keep the POST non-idempotent with no 5xx/timeout retries beyond the existing connection-phase exception; verify the 1.1 tests pass with `pnpm test -- jira-gateway.http-client.spec.ts`
 
 ## 4. Comment sync service
 
