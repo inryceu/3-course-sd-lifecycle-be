@@ -40,7 +40,7 @@
 
 ## 8. Verification
 
-- [ ] 8.1 Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm test:e2e`, `pnpm api:validate` and `openspec validate "jira-comment-sync" --strict`; all must pass
+- [x] 8.1 Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm test:e2e`, `pnpm api:validate` and `openspec validate "jira-comment-sync" --strict`; all must pass
 
 ## Workflow follow-up
 
