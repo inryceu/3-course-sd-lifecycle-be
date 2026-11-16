@@ -17,10 +17,10 @@
 
 ## 4. Comment sync service
 
-- [ ] 4.1 Implement the mapping lookup and skip path: read `jira_issue_mappings` by `boardId` + `cardId`, debug-log and return when no mapping exists, and validate the mapped issue key; verify the mapping and invalid-key tests in `jira-comment-sync.service.spec.ts`
-- [ ] 4.2 Implement author attribution: inject `AUTH_FACADE`, resolve the author's display name, use `Unknown user` for null/blank/failed lookups without blocking, prepend the exact `[BoardSync] <name>: ` prefix and build the body with `plainTextToAdf`; verify the authorship tests in `jira-comment-sync.service.spec.ts`
-- [ ] 4.3 Implement the five-second budget and gateway call: measure from `occurredAt`, clamp to five seconds, skip the call below the minimum budget, pass the remaining `timeBudgetMs` to `addComment`, and map 404, gateway, deadline and unexpected failures to the stable reasons; verify the budget and failure tests in `jira-comment-sync.service.spec.ts`
-- [ ] 4.4 Implement the success and failure log shapes: one `TO_JIRA` row per Jira attempt with `mappingId`, `commentId`, `cardId`, `issueKey`, `jiraCommentId` on success, `reason`/`errorMessage` on failure and `latencyMs` in every row; mark the comment synced only after Jira accepts, leave it false on failure, log at the specified levels, and never log comment text; verify all outcomes and the no-retry test in `jira-comment-sync.service.spec.ts`
+- [x] 4.1 Implement the mapping lookup and skip path: read `jira_issue_mappings` by `boardId` + `cardId`, debug-log and return when no mapping exists, and validate the mapped issue key; verify the mapping and invalid-key tests in `jira-comment-sync.service.spec.ts`
+- [x] 4.2 Implement author attribution: inject `AUTH_FACADE`, resolve the author's display name, use `Unknown user` for null/blank/failed lookups without blocking, prepend the exact `[BoardSync] <name>: ` prefix and build the body with `plainTextToAdf`; verify the authorship tests in `jira-comment-sync.service.spec.ts`
+- [x] 4.3 Implement the five-second budget and gateway call: measure from `occurredAt`, clamp to five seconds, skip the call below the minimum budget, pass the remaining `timeBudgetMs` to `addComment`, and map 404, gateway, deadline and unexpected failures to the stable reasons; verify the budget and failure tests in `jira-comment-sync.service.spec.ts`
+- [x] 4.4 Implement the success and failure log shapes: one `TO_JIRA` row per Jira attempt with `mappingId`, `commentId`, `cardId`, `issueKey`, `jiraCommentId` on success, `reason`/`errorMessage` on failure and `latencyMs` in every row; mark the comment synced only after Jira accepts, leave it false on failure, log at the specified levels, and never log comment text; verify all outcomes and the no-retry test in `jira-comment-sync.service.spec.ts`
 
 ## 5. Listener and module wiring
 
