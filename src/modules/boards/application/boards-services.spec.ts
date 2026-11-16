@@ -246,9 +246,7 @@ describe('BoardsFacadeService', () => {
   const commentsServiceFor = (comment: CommentEntity) => {
     const findOne = jest.fn((options: { where: { id: string; cardId: string } }) =>
       Promise.resolve(
-        options.where.id === comment.id && options.where.cardId === comment.cardId
-          ? comment
-          : null,
+        options.where.id === comment.id && options.where.cardId === comment.cardId ? comment : null,
       ),
     );
     const save = jest.fn((entity: CommentEntity) => Promise.resolve(entity));

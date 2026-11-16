@@ -24,8 +24,8 @@
 
 ## 5. Listener and module wiring
 
-- [ ] 5.1 Add the `card.commented` listener that ignores non-user origins, starts `syncComment` fire-and-forget, and logs unexpected rejections; verify all `jira-comment-sync.listener.spec.ts` tests pass
-- [ ] 5.2 Register the comment sync service/listener in `JiraSyncModule`, keep `AUTH_FACADE` and `BOARDS_FACADE` as the only cross-module collaborators, and add no new module imports beyond the existing `AuthModule` and `BoardsModule`; verify `pnpm typecheck`, `pnpm lint` and the focused unit suites
+- [x] 5.1 Add the `card.commented` listener that ignores non-user origins, starts `syncComment` fire-and-forget, and logs unexpected rejections; verify all `jira-comment-sync.listener.spec.ts` tests pass
+- [x] 5.2 Register the comment sync service/listener in `JiraSyncModule`, keep `AUTH_FACADE` and `BOARDS_FACADE` as the only cross-module collaborators, and add no new module imports beyond the existing `AuthModule` and `BoardsModule`; verify `pnpm typecheck`, `pnpm lint` and the focused unit suites
 
 ## 6. Integration behavior
 

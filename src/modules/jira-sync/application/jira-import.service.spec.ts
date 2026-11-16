@@ -84,6 +84,7 @@ function setup(
         Promise.resolve({ cardId: `card-${jiraIssueKey}`, outcome: 'created' }),
       ),
     moveCardFromExternal: jest.fn(),
+    markCommentSynced: jest.fn(),
   };
   const gateway = {
     listProjects: jest.fn().mockResolvedValue([
