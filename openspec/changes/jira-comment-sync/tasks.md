@@ -35,8 +35,8 @@
 
 ## 7. Documentation
 
-- [ ] 7.1 Create `src/modules/jira-sync/README.md` (it does not exist yet) documenting comment mirroring, the `user`-origin filter, the exact `[BoardSync] <name>: <text>` prefix and `Unknown user` fallback, unmapped-card skips, the five-second budget convention, success/failure sync-log payloads, no retry/ordering, the T-49/T-35 outbox handoff, and the risk that a comment deleted before the mirror runs can still appear in Jira; verify the document matches `design.md`
-- [ ] 7.2 Update `docs/api/openapi.yaml` only if needed so `POST /cards/{cardId}/comments` and `Comment.syncedToJira` accurately describe mirroring and asynchronous state; verify `pnpm api:validate` and confirm no unrelated API diff
+- [x] 7.1 Create `src/modules/jira-sync/README.md` (it does not exist yet) documenting comment mirroring, the `user`-origin filter, the exact `[BoardSync] <name>: <text>` prefix and `Unknown user` fallback, unmapped-card skips, the five-second budget convention, success/failure sync-log payloads, no retry/ordering, the T-49/T-35 outbox handoff, and the risk that a comment deleted before the mirror runs can still appear in Jira; verify the document matches `design.md`
+- [x] 7.2 Update `docs/api/openapi.yaml` only if needed so `POST /cards/{cardId}/comments` and `Comment.syncedToJira` accurately describe mirroring and asynchronous state; verify `pnpm api:validate` and confirm no unrelated API diff
 
 ## 8. Verification
 
