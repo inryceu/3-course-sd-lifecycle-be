@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { EventBusModule } from './common/events';
+import { SanitizingLoggerService } from './common/logger/sanitizing-logger.service';
 import { allConfigs, DatabaseConfig } from './config/configuration';
 import { dataSourceOptions } from './config/database-config';
 import { envFilePaths } from './config/env-files';
@@ -53,6 +56,18 @@ import { RealtimeModule } from './modules/realtime';
     JiraSyncModule,
     RealtimeModule,
     HealthModule,
+    // Global rate limiting: 100 requests per minute by default.
+    // Stricter limits are applied per-route via @Throttle() decorators.
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60000, limit: 100 }],
+    }),
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    SanitizingLoggerService,
   ],
 })
 export class AppModule {}

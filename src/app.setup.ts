@@ -2,8 +2,10 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import helmet from 'helmet';
 import { AppConfig } from './config/configuration';
 import { RealtimeIoAdapter } from './modules/realtime';
+import { SanitizingLoggerService } from './common/logger/sanitizing-logger.service';
 
 /**
  * Applies the HTTP and WebSocket settings shared by the real server (main.ts) and the
@@ -20,12 +22,16 @@ export function configureApp(
   app.setGlobalPrefix(apiPrefix);
   // Keep the raw bytes for webhook signature verification and allow Jira's larger payloads.
   (app as NestExpressApplication).useBodyParser('json', { limit: '1mb' });
+  // Helmet security headers; CSP relaxed so Swagger UI keeps working.
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.enableCors({
     origin: frontendUrl,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
+  // Sanitizing logger redacts secrets from all log output.
+  app.useLogger(app.get(SanitizingLoggerService));
   app.useWebSocketAdapter(new RealtimeIoAdapter(app, frontendUrl));
   app.useGlobalPipes(
     new ValidationPipe({
