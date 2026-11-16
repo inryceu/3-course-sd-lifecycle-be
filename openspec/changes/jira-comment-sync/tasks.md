@@ -9,7 +9,7 @@
 
 ## 2. Boards facade synced-state boundary
 
-- [ ] 2.1 Add `markCommentSynced(cardId, commentId): Promise<void>` (both ids typed `string`) to `BoardsFacade`, expose the type through the boards public index, and implement it by updating the comment only when both ids match; add focused unit tests in `boards-services.spec.ts` proving that a matching `cardId` + `commentId` updates the flag and that a comment with the same `commentId` under a different `cardId` is not updated; verify `pnpm test -- boards-services.spec.ts`
+- [x] 2.1 Add `markCommentSynced(cardId, commentId): Promise<void>` (both ids typed `string`) to `BoardsFacade`, expose the type through the boards public index, and implement it by updating the comment only when both ids match; add focused unit tests in `boards-services.spec.ts` proving that a matching `cardId` + `commentId` updates the flag and that a comment with the same `commentId` under a different `cardId` is not updated; verify `pnpm test -- boards-services.spec.ts`
 
 ## 3. Gateway add-comment budget
 
