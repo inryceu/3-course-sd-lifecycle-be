@@ -13,12 +13,14 @@ import {
   ExternalUpsertResult,
 } from './boards-facade.port';
 import { CardsService } from './cards.service';
+import { CommentsService } from './comments.service';
 
 @Injectable()
 export class BoardsFacadeService implements BoardsFacade {
   constructor(
     private readonly access: BoardAccessService,
     private readonly cards: CardsService,
+    private readonly comments: CommentsService,
     @InjectRepository(BoardEntity) private readonly boards: Repository<BoardEntity>,
     @InjectRepository(BoardColumnEntity) private readonly columns: Repository<BoardColumnEntity>,
   ) {}
@@ -48,5 +50,9 @@ export class BoardsFacadeService implements BoardsFacade {
 
   moveCardFromExternal(input: ExternalCardMove): Promise<'moved' | 'unchanged' | 'not-found'> {
     return this.cards.moveFromExternal(input);
+  }
+
+  markCommentSynced(cardId: string, commentId: string): Promise<void> {
+    return this.comments.markSynced(cardId, commentId);
   }
 }
