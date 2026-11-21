@@ -124,9 +124,7 @@ describe('Board members and card assignment (e2e)', () => {
       const stranger = await registerUser(app, 'nm-stranger');
       const board = await createBoard(app, admin);
       const remove = (userId: string) =>
-        request(server)
-          .delete(`${PREFIX}/boards/${board.id}/members/${userId}`)
-          .set(bearer(admin));
+        request(server).delete(`${PREFIX}/boards/${board.id}/members/${userId}`).set(bearer(admin));
 
       await setRole(board.id, admin, stranger, 'VIEWER').expect(404);
       await remove(stranger.id).expect(404);
