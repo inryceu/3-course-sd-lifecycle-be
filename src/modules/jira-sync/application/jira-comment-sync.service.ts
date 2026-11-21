@@ -9,6 +9,7 @@ import {
   JiraGatewayError,
   JiraTimeBudgetExceededError,
   JiraTimeoutError,
+  JiraUnauthorizedError,
 } from '../domain/jira-gateway.errors';
 import { JiraIssueMappingEntity } from '../infrastructure/persistence/jira-issue-mapping.entity';
 import {
@@ -17,7 +18,7 @@ import {
   SyncStatus,
 } from '../infrastructure/persistence/sync-log.entity';
 import { plainTextToAdf } from './helpers/plain-text-to-adf';
-import { JIRA_GATEWAY, AddCommentInput, JiraGateway } from './jira-gateway.port';
+import { JIRA_GATEWAY, AddCommentInput, AddCommentResult, JiraGateway } from './jira-gateway.port';
 
 const SYNC_BUDGET_MS = 5_000;
 const MIN_CALL_BUDGET_MS = 250;
@@ -25,7 +26,13 @@ const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9_]{1,9}-\d+$/;
 const UNKNOWN_AUTHOR = 'Unknown user';
 
 type FailureReason =
-  'invalid issue key' | 'issue not found' | 'deadline exceeded' | 'jira error' | 'sync failed';
+  | 'invalid issue key'
+  | 'issue not found'
+  | 'missing scope'
+  | 'not connected'
+  | 'deadline exceeded'
+  | 'jira error'
+  | 'sync failed';
 
 interface SyncLogOutcome {
   status: SyncStatus;
@@ -37,6 +44,7 @@ class SyncFailure extends Error {
   constructor(
     readonly reason: FailureReason,
     message: string = reason,
+    readonly extra: Record<string, unknown> = {},
   ) {
     super(message);
     this.name = 'SyncFailure';
@@ -94,7 +102,17 @@ export class JiraCommentSyncService {
         body: plainTextToAdf(`[BoardSync] ${displayName}: ${event.payload.text}`),
         timeBudgetMs,
       };
-      const created = await this.gateway.addComment(input);
+      let created: AddCommentResult;
+      try {
+        created = await this.gateway.addComment(input);
+      } catch (error) {
+        // The POST was sent and aborted: Jira may have stored the comment, so a retry could
+        // duplicate it. Marked like the status sync's `outcome: 'unknown'` so an outbox skips it.
+        if (error instanceof JiraTimeoutError) {
+          throw new SyncFailure('deadline exceeded', error.message, { outcome: 'unknown' });
+        }
+        throw error;
+      }
 
       try {
         await this.boards.markCommentSynced(event.payload.cardId, commentId);
@@ -123,6 +141,7 @@ export class JiraCommentSyncService {
           cardId: event.payload.cardId,
           issueKey,
           reason: failure.reason,
+          ...failure.extra,
         },
         errorMessage: failure.message,
       };
@@ -133,8 +152,9 @@ export class JiraCommentSyncService {
     const target = issueKey ?? 'unmapped mapping';
 
     if (outcome.status === SyncStatus.FAILED) {
+      const what = payload['outcome'] === 'unknown' ? 'outcome unknown' : 'failed';
       this.logger.error(
-        `Jira comment sync failed for ${target} on board ${event.boardId}: ${String(payload['reason'])}`,
+        `Jira comment sync ${what} for ${target} on board ${event.boardId}: ${String(payload['reason'])}`,
         outcome.errorMessage ?? undefined,
       );
     } else if (latencyMs > SYNC_BUDGET_MS) {
@@ -185,20 +205,34 @@ export class JiraCommentSyncService {
     return Number.isNaN(parsed) ? Date.now() : parsed;
   }
 
-  private failureFrom(error: unknown): { reason: FailureReason; message: string } {
+  private failureFrom(error: unknown): {
+    reason: FailureReason;
+    message: string;
+    extra: Record<string, unknown>;
+  } {
     if (error instanceof SyncFailure) {
-      return { reason: error.reason, message: error.message };
+      return { reason: error.reason, message: error.message, extra: error.extra };
     }
     if (error instanceof JiraClientError && error.status === 404) {
-      return { reason: 'issue not found', message: error.message };
+      return { reason: 'issue not found', message: error.message, extra: {} };
+    }
+    if (
+      error instanceof JiraClientError &&
+      error.status === 403 &&
+      error.providerError === 'missing_scope'
+    ) {
+      return { reason: 'missing scope', message: error.message, extra: {} };
+    }
+    if (error instanceof JiraUnauthorizedError) {
+      return { reason: 'not connected', message: error.message, extra: {} };
     }
     if (error instanceof JiraTimeBudgetExceededError || error instanceof JiraTimeoutError) {
-      return { reason: 'deadline exceeded', message: error.message };
+      return { reason: 'deadline exceeded', message: error.message, extra: {} };
     }
     if (error instanceof JiraGatewayError) {
-      return { reason: 'jira error', message: error.message };
+      return { reason: 'jira error', message: error.message, extra: {} };
     }
-    return { reason: 'sync failed', message: this.message(error) };
+    return { reason: 'sync failed', message: this.message(error), extra: {} };
   }
 
   private message(error: unknown): string {

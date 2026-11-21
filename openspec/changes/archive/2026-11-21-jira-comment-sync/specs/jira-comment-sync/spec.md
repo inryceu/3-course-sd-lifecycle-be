@@ -27,7 +27,12 @@ The system SHALL mirror a `card.commented` event only when its origin is `user` 
 
 ### Requirement: Preserve the comment author in Jira
 
-The Jira body SHALL be an ADF document containing `[BoardSync] <display name>: <text>`, using the comment author's display name. A missing, blank, or unavailable display name SHALL use `Unknown user`. A failed name lookup SHALL NOT prevent the comment from being posted.
+The Jira body SHALL be an ADF document containing `[BoardSync] <display name>: <text>`, using the comment author's display name. A missing, blank, or unavailable display name SHALL use `Unknown user`. A failed name lookup SHALL NOT prevent the comment from being posted. Each line of the text SHALL become its own ADF paragraph, so Jira shows the line breaks.
+
+#### Scenario: Multi-line comment
+
+- **WHEN** a comment text contains line breaks
+- **THEN** the Jira body has one paragraph per line, with the prefix on the first
 
 #### Scenario: Known author
 
@@ -79,12 +84,27 @@ The system SHALL write exactly one `TO_JIRA` sync-log row per Jira add-comment a
 
 ### Requirement: Use stable failure reasons for recovery
 
-Every failed attempt SHALL record one of `invalid issue key`, `issue not found`, `deadline exceeded`, `jira error` or `sync failed` in `payload.reason`, so later recovery can classify the failure without parsing messages.
+Every failed attempt SHALL record one of `invalid issue key`, `issue not found`, `missing scope`, `not connected`, `deadline exceeded`, `jira error` or `sync failed` in `payload.reason`, so later recovery can classify the failure without parsing messages. When the add-comment request timed out after it was sent, the payload SHALL also carry `outcome: 'unknown'` (Jira may have stored the comment), the same marker the status sync uses; recovery SHALL NOT blindly re-post such rows.
 
 #### Scenario: Unknown issue
 
 - **WHEN** Jira answers 404 for the mapped issue key
 - **THEN** the failure reason is `issue not found`
+
+#### Scenario: Missing scope
+
+- **WHEN** the connection lacks `write:jira-work` (403 `missing_scope`)
+- **THEN** the failure reason is `missing scope`
+
+#### Scenario: Not connected
+
+- **WHEN** the board has no Jira connection or it must be reconnected
+- **THEN** the failure reason is `not connected`
+
+#### Scenario: Timeout after the request was sent
+
+- **WHEN** the add-comment request times out
+- **THEN** the failure reason is `deadline exceeded` and the payload has `outcome: 'unknown'`
 
 #### Scenario: Gateway failure
 

@@ -4,7 +4,7 @@
 
 - [x] 1.1 Add gateway tests for `AddCommentInput.timeBudgetMs`: a caller budget caps the request timeout, retries and waits; an omitted budget uses the configured default; a larger caller value is capped by the configured default; add a test that the non-idempotent POST is not retried on 5xx or timeout; verify `pnpm test -- jira-gateway.http-client.spec.ts` fails for the intended missing behavior before implementation
 - [x] 1.2 Add `JiraCommentSyncService` unit tests for: only `user` origin proceeds; mapping is read by `boardId` + `cardId`; an unmapped card makes no gateway call and writes no log; a known author produces `[BoardSync] <name>: <text>` in ADF; blank, null and failed author lookups use `Unknown user` but still post; success marks the comment and writes one `SUCCESS` row with `jiraCommentId`; Jira 404 becomes `issue not found`; other gateway errors become `jira error`; invalid issue keys become `invalid issue key`; an exhausted budget makes no call and logs `deadline exceeded`; unexpected errors become `sync failed`; failures leave the flag false and do not retry; verify `pnpm test -- jira-comment-sync.service.spec.ts` fails for the intended missing behavior
-- [x] 1.3 Add `JiraCommentSyncListener` unit tests for the `user`-only filter, fire-and-forget return, service invocation and unexpected-rejection logging; verify `pnpm test -- jira-comment-sync.listener.spec.ts` fails for the intended missing behavior
+- [x] 1.3 Add `JiraCommentSyncListener` unit tests for fire-and-forget return, service invocation and unexpected-rejection logging; verify `pnpm test -- jira-comment-sync.listener.spec.ts` fails for the intended missing behavior
 - [x] 1.4 Add `test/jira-comment-sync.e2e-spec.ts` with a stubbed `JIRA_GATEWAY` and real Postgres covering: a mapped user comment posts the prefixed ADF body exactly once, sets `syncedToJira` and writes one `TO_JIRA`/`SUCCESS` row; a Jira-origin comment posts nothing; an unmapped card posts nothing and writes no row; a gateway failure leaves `syncedToJira` false and writes one `FAILED` row with `commentId`, `cardId`, `issueKey` and a stable reason; verify `pnpm test:e2e -- jira-comment-sync.e2e-spec.ts` fails for the intended missing behavior
 
 ## 2. Boards facade synced-state boundary
@@ -24,7 +24,7 @@
 
 ## 5. Listener and module wiring
 
-- [x] 5.1 Add the `card.commented` listener that ignores non-user origins, starts `syncComment` fire-and-forget, and logs unexpected rejections; verify all `jira-comment-sync.listener.spec.ts` tests pass
+- [x] 5.1 Add the `card.commented` listener that (the `user`-origin guard lives in the service) starts `syncComment` fire-and-forget, and logs unexpected rejections; verify all `jira-comment-sync.listener.spec.ts` tests pass
 - [x] 5.2 Register the comment sync service/listener in `JiraSyncModule`, keep `AUTH_FACADE` and `BOARDS_FACADE` as the only cross-module collaborators, and add no new module imports beyond the existing `AuthModule` and `BoardsModule`; verify `pnpm typecheck`, `pnpm lint` and the focused unit suites
 
 ## 6. Integration behavior
@@ -40,6 +40,7 @@
 
 ## 8. Verification
 
+- [x] 7.3 Review fixes: distinct `missing scope` / `not connected` reasons, `outcome: unknown` after a send timeout, one ADF paragraph per line, single origin guard (service); unit tests for each
 - [x] 8.1 Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm test:e2e`, `pnpm api:validate` and `openspec validate "jira-comment-sync" --strict`; all must pass
 
 ## Workflow follow-up

@@ -21,7 +21,7 @@ The add-comment POST is non-idempotent: the gateway does not retry it on 5xx or 
 
 Success rows include `commentId`, `cardId`, `issueKey`, `jiraCommentId` and `latencyMs`. Failure rows include `commentId`, `cardId`, `issueKey`, a stable `reason`, `latencyMs` and the row-level `errorMessage`. Every row uses the `TO_JIRA` direction and the card-issue mapping id as `mappingId`.
 
-Stable failure reasons are `invalid issue key`, `issue not found`, `deadline exceeded`, `jira error` and `sync failed`. Comment text is never written to application logs or sync-log payloads.
+Stable failure reasons are `invalid issue key`, `issue not found`, `missing scope` (reconnect Jira), `not connected`, `deadline exceeded`, `jira error` and `sync failed`. A request that timed out after it was sent also carries `outcome: 'unknown'` (Jira may hold the comment; an outbox must not re-post it blindly). Comment text is never written to application logs or sync-log payloads.
 
 If the local synced-state update fails after Jira accepted the comment, the service logs that local error but still writes the success row: Jira already holds the comment, and `jiraCommentId` is the reconciliation source.
 

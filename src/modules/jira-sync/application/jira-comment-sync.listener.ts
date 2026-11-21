@@ -12,10 +12,7 @@ export class JiraCommentSyncListener {
 
   @OnEvent('card.commented')
   onCardCommented(event: DomainEventOf<'card.commented'>): void {
-    if (event.origin !== 'user') {
-      return;
-    }
-
+    // The origin guard lives in JiraCommentSyncService.syncComment.
     void this.sync.syncComment(event).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : undefined;

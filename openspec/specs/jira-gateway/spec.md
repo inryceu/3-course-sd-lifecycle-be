@@ -265,7 +265,7 @@ Every outbound HTTP request SHALL have a configurable timeout (default 10 second
 
 ### Requirement: Per-call time budget
 
-The system SHALL enforce an overall time budget per public gateway call (default 45 seconds), covering token refresh and all retries and waits. `getIssue`, `listTransitions` and `doTransition` SHALL accept an optional `timeBudgetMs`; the effective budget SHALL be the smaller of the requested value and the configured budget. The deadline SHALL be checked before each attempt and before each sleep. Exhaustion SHALL throw `JiraTimeBudgetExceededError` with the effective `timeBudgetMs` and the attempts made.
+The system SHALL enforce an overall time budget per public gateway call (default 45 seconds), covering token refresh and all retries and waits. `getIssue`, `listTransitions`, `doTransition` and `addComment` SHALL accept an optional `timeBudgetMs`; the effective budget SHALL be the smaller of the requested value and the configured budget. The deadline SHALL be checked before each attempt and before each sleep. Exhaustion SHALL throw `JiraTimeBudgetExceededError` with the effective `timeBudgetMs` and the attempts made.
 
 #### Scenario: Budget exhausted before a retry
 
@@ -279,7 +279,7 @@ The system SHALL enforce an overall time budget per public gateway call (default
 
 #### Scenario: Caller shortens the budget
 
-- **WHEN** `getIssue`, `listTransitions` or `doTransition` is called with a `timeBudgetMs` below the configured budget
+- **WHEN** `getIssue`, `listTransitions`, `doTransition` or `addComment` is called with a `timeBudgetMs` below the configured budget
 - **THEN** the deadline uses the caller value, and the request timeout, retries and waits are capped by it
 
 #### Scenario: Caller cannot extend the budget

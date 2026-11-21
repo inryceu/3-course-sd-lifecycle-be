@@ -39,14 +39,6 @@ describe('JiraCommentSyncListener', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('skips Jira-originated events', () => {
-    const { listener, sync } = setup();
-
-    listener.onCardCommented(makeEvent({ origin: 'jira' }));
-
-    expect(sync.syncComment).not.toHaveBeenCalled();
-  });
-
   it('starts the service without awaiting it', () => {
     let resolve: () => void = () => undefined;
     const pending = new Promise<void>((done) => {

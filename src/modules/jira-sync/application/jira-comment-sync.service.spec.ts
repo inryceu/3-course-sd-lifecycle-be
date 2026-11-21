@@ -3,7 +3,12 @@ import { Repository } from 'typeorm';
 import { AuthFacade } from '../../auth';
 import { BoardsFacade } from '../../boards';
 import { CommentSnapshot, DomainEventOf } from '../../../common/events/domain-events';
-import { JiraClientError, JiraServerError } from '../domain/jira-gateway.errors';
+import {
+  JiraClientError,
+  JiraServerError,
+  JiraTimeoutError,
+  JiraUnauthorizedError,
+} from '../domain/jira-gateway.errors';
 import { JiraIssueMappingEntity } from '../infrastructure/persistence/jira-issue-mapping.entity';
 import {
   SyncDirection,
@@ -282,6 +287,42 @@ describe('JiraCommentSyncService', () => {
       .map((value) => String(value))
       .join(' ');
     expect(loggerText).not.toContain(text);
+  });
+
+  it.each([
+    ['missing scope', new JiraClientError(403, 'missing_scope'), undefined],
+    ['not connected', new JiraUnauthorizedError('connection not found'), undefined],
+    ['deadline exceeded', new JiraTimeoutError(1, 1), 'unknown'],
+  ])('records %s as its own reason', async (reason, addCommentError, outcome) => {
+    const { service, boards, logs } = setup({ addCommentError });
+
+    await service.syncComment(makeEvent());
+
+    expect(boards.markCommentSynced).not.toHaveBeenCalled();
+    expect(firstLog(logs)).toMatchObject({ status: SyncStatus.FAILED, payload: { reason } });
+    expect(firstLog(logs).payload['outcome']).toBe(outcome);
+  });
+
+  it('does not mark a plain 403 or 5xx as outcome unknown', async () => {
+    const { service, logs } = setup({ addCommentError: new JiraClientError(403, 'forbidden') });
+
+    await service.syncComment(makeEvent());
+
+    expect(firstLog(logs).payload).toMatchObject({ reason: 'jira error' });
+    expect(firstLog(logs).payload['outcome']).toBeUndefined();
+  });
+
+  it('sends a multi-line comment as one ADF paragraph per line', async () => {
+    const { service, gateway } = setup();
+
+    await service.syncComment(makeEvent({ text: 'first\nsecond\r\n\nfourth' }));
+
+    expect(gateway.addComment.mock.calls[0][0].body.content).toEqual([
+      { type: 'paragraph', content: [{ type: 'text', text: '[BoardSync] Ada Lovelace: first' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'second' }] },
+      { type: 'paragraph', content: [] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'fourth' }] },
+    ]);
   });
 
   it('rejects an invalid issue key before calling Jira', async () => {
