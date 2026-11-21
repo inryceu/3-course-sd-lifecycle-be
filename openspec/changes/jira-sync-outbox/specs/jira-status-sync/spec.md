@@ -2,7 +2,7 @@
 
 ### Requirement: Synchronize only user column moves
 
-The system SHALL persist exactly one `sync_outbox` intent for a `card.moved` event only when its origin is `user`, the card changed columns, the card has a `jiraIssueKey`, and the board has a `jiraProjectKey`. It SHALL insert one row, or coalesce into an existing `PENDING` row for the same card and operation, in the same database transaction as the card move, without a Jira call. Events with origin `jira`, same-column reorders, cards without an issue key, and boards without a linked project SHALL NOT create an outbox row or change Jira. A destination column with no Jira status mapping SHALL NOT be used to skip the durable row; the handler SHALL resolve it as `unmapped_target` without a transition.
+The system SHALL persist exactly one `sync_outbox` intent for a `card.moved` event only when its origin is `user`, the card changed columns, the card has a `jiraIssueKey`, and the board has a `jiraProjectKey`. It SHALL insert one row, or coalesce into an existing `PENDING` row for the same card and operation, in the same database transaction as the card move, without a Jira call. Events with origin `jira`, same-column reorders, cards without an issue key, and boards without a linked project SHALL NOT create an outbox row or change Jira. The handler SHALL resolve a destination with no direct Jira transition later as a permanent `no_transition_path`, not at request time.
 
 #### Scenario: User moves a linked card
 
@@ -29,11 +29,6 @@ The system SHALL persist exactly one `sync_outbox` intent for a `card.moved` eve
 - **WHEN** a user moves a linked card on a board without a `jiraProjectKey`
 - **THEN** no outbox row is inserted and no Jira call is made
 
-#### Scenario: Destination has no Jira mapping
-
-- **WHEN** a user moves a linked card to a column whose Jira status has no mapping
-- **THEN** the row is inserted and the handler later marks it `SENT` with outcome `unmapped_target`, without a Jira transition
-
 ### Requirement: No-op when the issue already matches the destination
 
 The system SHALL read the issue's current Jira status at attempt time and SHALL mark the outbox row `SENT` with outcome `no-op` when that status maps to the destination board column under the board's stored or default mapping, before listing transitions. A coalesced row whose latest target already matches the current status SHALL also be `SENT` as a no-op.
@@ -50,7 +45,7 @@ The system SHALL read the issue's current Jira status at attempt time and SHALL 
 
 ### Requirement: Select one direct transition for the destination column
 
-The system SHALL consider only currently available transitions whose target status maps to the destination column. It SHALL prefer a candidate with an explicit stored mapping; otherwise it SHALL choose the lowest `jiraStatusId`. Several transitions to the chosen status SHALL be resolved by the lowest transition id. It SHALL NOT perform multi-step transition paths. When no available direct transition targets the destination column, the handler SHALL resolve all project statuses and their stored/default mappings: if no status maps to the destination it SHALL mark the row `SENT`/`unmapped_target`; if at least one maps but none is available directly it SHALL fail permanently with `no_transition_path`.
+The system SHALL consider only currently available transitions whose target status maps to the destination column. It SHALL prefer a candidate with an explicit stored mapping; otherwise it SHALL choose the lowest `jiraStatusId`. Several transitions to the chosen status SHALL be resolved by the lowest transition id. It SHALL NOT perform multi-step transition paths. When no available direct transition targets the destination column, the handler SHALL fail permanently with `no_transition_path`.
 
 #### Scenario: Explicit mapping wins
 
@@ -62,19 +57,14 @@ The system SHALL consider only currently available transitions whose target stat
 - **WHEN** no candidate has an explicit mapping and several candidate statuses map to the destination column
 - **THEN** the candidate with the lowest `jiraStatusId` is selected
 
-#### Scenario: Only a multi-step path exists
+#### Scenario: Only an indirect path exists
 
-- **WHEN** at least one project status maps to the destination but the target is reachable only through an intermediate status
+- **WHEN** the target is reachable only through an intermediate status
 - **THEN** no transition is executed and the row becomes `DEAD` with `no_transition_path`
-
-#### Scenario: No status maps to the destination
-
-- **WHEN** no available transition targets the destination and no project status maps to that column
-- **THEN** the row is `SENT` with outcome `unmapped_target` and no transition is executed
 
 #### Scenario: No direct transition
 
-- **WHEN** at least one project status maps to the destination but no available transition reaches it directly
+- **WHEN** no available transition reaches the destination column directly
 - **THEN** the attempt fails with `no_transition_path` and no transition is executed
 
 ### Requirement: Execute exactly one transition
@@ -108,7 +98,7 @@ The system SHALL execute at most one Jira workflow transition per handler attemp
 
 ### Requirement: Record every outbound attempt in the sync log
 
-The system SHALL write exactly one `TO_JIRA` sync-log row per `TRANSITION_ISSUE` handler attempt, including a no-op or an unmapped destination: `SUCCESS` for a transition, no-op or `unmapped_target`, `FAILED` otherwise. The payload SHALL include `outboxId`, `attempt`, card id, issue key, source and destination columns, outcome or reason, the chosen status and transition when known, `retryable`, `errorCode` and `latencyMs`; failure rows SHALL include a sanitized `errorMessage`. `mappingId` SHALL be set when a card-issue mapping exists, otherwise null. Moves that coalesce without a handler attempt SHALL NOT write a sync-log row.
+The system SHALL write exactly one `TO_JIRA` sync-log row per `TRANSITION_ISSUE` handler attempt, including a no-op: `SUCCESS` for a transition or no-op, `FAILED` otherwise. The payload SHALL include `outboxId`, `attempt`, card id, issue key, source and destination columns, outcome or reason, the chosen status and transition when known, `retryable`, `errorCode` and `latencyMs`; failure rows SHALL include a sanitized `errorMessage`. `mappingId` SHALL be set when a card-issue mapping exists, otherwise null. Moves that coalesce without a handler attempt SHALL NOT write a sync-log row.
 
 #### Scenario: Successful transition is logged
 
@@ -119,11 +109,6 @@ The system SHALL write exactly one `TO_JIRA` sync-log row per `TRANSITION_ISSUE`
 
 - **WHEN** the issue already maps to the destination column
 - **THEN** one `TO_JIRA`/`SUCCESS` row records outcome `no-op`, the outbox id and the attempt
-
-#### Scenario: Unmapped target is logged
-
-- **WHEN** no project status maps to the destination column
-- **THEN** one `TO_JIRA`/`SUCCESS` row records outcome `unmapped_target`, the outbox id and the attempt
 
 #### Scenario: Failure is logged
 
@@ -147,7 +132,7 @@ The system SHALL write exactly one `TO_JIRA` sync-log row per `TRANSITION_ISSUE`
 
 ### Requirement: Bound synchronization to five seconds from the event
 
-The system SHALL give each handler attempt a five-second budget measured from the start of that attempt, not from the event's `occurredAt`, and SHALL give every Jira gateway call, including the no-candidate `listProjectStatuses` call, only the time remaining in that budget. When the budget is exhausted, it SHALL stop, record a timed-out failure, and start no further call. It SHALL warn when a completed attempt takes longer than 5000 ms. A 429 whose `Retry-After` cannot fit the budget SHALL be treated as a rate-limit failure, not a time-budget failure. The original event time SHALL remain only for audit.
+The system SHALL give each handler attempt a five-second budget measured from the start of that attempt, not from the event's `occurredAt`, and SHALL give every Jira gateway call only the time remaining in that budget. When the budget is exhausted, it SHALL stop, record a timed-out failure, and start no further call. It SHALL warn when a completed attempt takes longer than 5000 ms. The original event time SHALL remain only for audit.
 
 #### Scenario: A stale event still gets a full budget
 
@@ -163,11 +148,6 @@ The system SHALL give each handler attempt a five-second budget measured from th
 
 - **WHEN** a Jira call runs longer than the remaining budget
 - **THEN** the gateway aborts it and the attempt is recorded as `FAILED`
-
-#### Scenario: Rate limit is not a timeout
-
-- **WHEN** Jira responds 429 with a `Retry-After` longer than the remaining call budget
-- **THEN** the row is throttled, not failed as a time-budget timeout, and `attempts` is unchanged
 
 #### Scenario: Slow but successful synchronization
 
@@ -243,7 +223,7 @@ For a dead-lettered `TRANSITION_ISSUE` row, the failure SHALL be surfaced by the
 
 #### Scenario: No valid transition is surfaced
 
-- **WHEN** a user move has at least one project status mapped to the destination column but no direct Jira transition reaches it
+- **WHEN** a user move has no direct Jira transition to the destination column
 - **THEN** the row is `DEAD` with `no_transition_path`, one `FAILED` row is written, and the dead-letter notification is sent
 
 ### Requirement: Report a timed-out transition as an unknown outcome
@@ -267,23 +247,9 @@ When the transition request was sent and then timed out, the system SHALL record
 
 ## ADDED Requirements
 
-### Requirement: Treat an unmapped destination column as a no-op
-
-The system SHALL mark a `TRANSITION_ISSUE` row `SENT` with outcome `unmapped_target` when no Jira status in the linked project maps to its target column. It SHALL NOT execute a transition, SHALL NOT dead-letter the row and SHALL NOT notify users. A target column with at least one mapped project status but no available direct transition SHALL still fail with `no_transition_path`.
-
-#### Scenario: Unmapped target is not a failure
-
-- **WHEN** the project has no Jira status mapped to the destination column
-- **THEN** the row is `SENT` with `unmapped_target` and no notification is created
-
-#### Scenario: Mapped target with no path is still a failure
-
-- **WHEN** a project status maps to the destination but no available direct transition reaches it
-- **THEN** the row is `DEAD` with `no_transition_path` and the dead-letter notification is sent
-
 ### Requirement: Store outbound work in a durable outbox
 
-The system SHALL persist every eligible outbound operation in a `sync_outbox` table before any Jira call. The table SHALL store board, card and actor ids, `operation`, jsonb `payload`, status, attempts, throttle count, availability, lock time, locking worker id, sanitized last error and stable error code, sanitized result, sent/dead timestamps, and a monotonic `sequence`. A committed row SHALL survive a process restart, and a rolled-back card move SHALL leave no row.
+The system SHALL persist every eligible outbound operation in a `sync_outbox` table before any Jira call. The table SHALL store board, card and actor ids, `operation`, jsonb `payload`, status, attempts, availability, lock time, locking worker id, sanitized last error and stable error code, sanitized result, sent/dead timestamps, and a monotonic `sequence`. A committed row SHALL survive a process restart, and a rolled-back card move SHALL leave no row.
 
 #### Scenario: Committed move leaves one row
 
@@ -319,24 +285,37 @@ The system SHALL dispatch outbox rows through a handler registry keyed by `opera
 - **WHEN** a later ticket adds a handler for a new operation
 - **THEN** it uses the existing table and registry without a schema change
 
-### Requirement: Coalesce pending moves per card
+### Requirement: Coalesce a move into a pending row
 
-The system SHALL coalesce a new move for the same card and operation into an existing `PENDING` row: the payload and actor SHALL become the latest values, while `sequence`, `created_at` and `available_at` are preserved. If the target column changes, `attempts` and `throttled_count` SHALL reset to 0 because the new target is a new intent; if it is unchanged, both counters SHALL be preserved. It SHALL NOT coalesce with an `IN_PROGRESS`, `SENT` or `DEAD` row. A partial unique index SHALL allow at most one `PENDING` row per card and operation.
+The system SHALL coalesce a new move for the same card and operation into an existing `PENDING` row by updating its payload and actor to the latest values while preserving `sequence`, `created_at` and `available_at`.
 
 #### Scenario: Second move while pending
 
 - **WHEN** a second move for the same card arrives while the first row is `PENDING`
 - **THEN** one `PENDING` row carries the latest target and the original sequence
 
-#### Scenario: Changed target resets retry counters
+#### Scenario: Latest actor replaces the earlier actor
 
-- **WHEN** a `PENDING` row has accumulated attempts or throttles and a coalesced move changes the target column
-- **THEN** `attempts` and `throttled_count` are 0 and `available_at` is unchanged
+- **WHEN** a different user makes the second move while the first row is `PENDING`
+- **THEN** the coalesced row stores the latest actor, sequence and availability
 
-#### Scenario: Same target keeps retry counters
+### Requirement: Reset the retry budget when a coalesced target changes
+
+The system SHALL reset `attempts` to 0 when a coalesced move changes the target column, and SHALL preserve `attempts` when the target column is unchanged.
+
+#### Scenario: Changed target resets attempts
+
+- **WHEN** a `PENDING` row has accumulated attempts and a coalesced move changes the target column
+- **THEN** `attempts` is 0 and `available_at` is unchanged
+
+#### Scenario: Same target keeps attempts
 
 - **WHEN** a coalesced move keeps the same target column
-- **THEN** `attempts` and `throttled_count` are preserved
+- **THEN** `attempts` is preserved
+
+### Requirement: Never coalesce non-pending rows
+
+The system SHALL NOT coalesce with an `IN_PROGRESS`, `SENT` or `DEAD` row; a new move SHALL create a new `PENDING` row.
 
 #### Scenario: Move while in progress
 
@@ -347,6 +326,15 @@ The system SHALL coalesce a new move for the same card and operation into an exi
 
 - **WHEN** a move arrives after the previous row is `SENT`
 - **THEN** a new `PENDING` row is inserted
+
+#### Scenario: Move after dead
+
+- **WHEN** a move arrives after the previous row is `DEAD`
+- **THEN** a new `PENDING` row is inserted behind the dead row
+
+### Requirement: Allow one pending row per card and operation
+
+The system SHALL enforce at most one `PENDING` row per card and operation with a partial unique index.
 
 #### Scenario: Different operations do not coalesce
 
@@ -379,7 +367,7 @@ The system SHALL claim only the lowest-sequence `PENDING` head for a card among 
 
 ### Requirement: Retry transient failures within a bounded backoff
 
-The system SHALL retry network errors, timeouts, Jira 5xx and time-budget exhaustion with capped full-jitter exponential backoff: a 1000 ms base, a 30000 ms cap and at most 20 retryable failures. It SHALL increment `attempts` only when a non-429 failure or stale lock returns a row to `PENDING`, not when claiming. It SHALL dead-letter 401 after refresh, 403, 404, invalid keys, unlinked boards and a mapped destination with no direct transition without retrying.
+The system SHALL retry network errors, timeouts, Jira 5xx, 429 and time-budget exhaustion with capped full-jitter exponential backoff: a 1000 ms base, a 30000 ms cap and at most 20 retryable failures. It SHALL increment `attempts` only when a failure or stale lock returns a row to `PENDING`, not when claiming. It SHALL dead-letter 401 after refresh, 403, 404, invalid keys, unlinked boards and a destination with no direct transition without retrying.
 
 #### Scenario: Jira 5xx is retried
 
@@ -401,39 +389,20 @@ The system SHALL retry network errors, timeouts, Jira 5xx and time-budget exhaus
 - **WHEN** `doTransition` answers 400 or 409
 - **THEN** the handler re-reads the issue status and treats a changed status as transient and an unchanged status as permanent
 
-#### Scenario: An unmapped target is not retried
-
-- **WHEN** no project status maps to the destination column
-- **THEN** the row is `SENT` with `unmapped_target` and `attempts` is unchanged
-
-#### Scenario: The twentieth failure dead-letters
-
-- **WHEN** a row receives its twentieth retryable failure
-- **THEN** it becomes `DEAD` with `attempts_exhausted`
-
-### Requirement: Handle Jira rate limits without consuming the retry budget
-
-The system SHALL treat a 429 as a throttle, not a retryable failure: it SHALL NOT increment `attempts`, SHALL increment `throttled_count`, and SHALL retry using `Retry-After` clamped to 1-30 seconds or the exponential formula when the header is absent. At 100 throttles the row SHALL become `DEAD` with `rate_limited_exhausted`, unless a later `PENDING` row for the same card and operation exists, in which case the exhausted row SHALL be `SENT` as `superseded`.
-
-#### Scenario: A 429 does not consume an attempt
+#### Scenario: A 429 is retried as transient
 
 - **WHEN** Jira answers 429
-- **THEN** `attempts` is unchanged, `throttled_count` increases, and the row is retried
+- **THEN** `attempts` increases and the row is retried after a delay within the 30000 ms cap
 
 #### Scenario: Retry-After is honoured
 
 - **WHEN** Jira answers 429 with a `Retry-After` of 45 seconds
 - **THEN** the row's delay is clamped to 30 seconds
 
-#### Scenario: The throttle cap dead-letters
+#### Scenario: The twentieth failure dead-letters
 
-- **WHEN** `throttled_count` reaches 100 and no later pending row exists
-- **THEN** the row becomes `DEAD` with `rate_limited_exhausted`
-
-#### Scenario: A newer move supersedes the exhausted row
-
-- **WHEN** the throttle cap is reached while a later `PENDING` row for the same card and operation exists
-- **THEN** the exhausted row becomes `SENT`/`superseded` and the later row can run
+- **WHEN** a row receives its twentieth retryable failure
+- **THEN** it becomes `DEAD` with `attempts_exhausted`
 
 ### Requirement: Recover stale in-progress rows within the recovery target
 
@@ -461,11 +430,11 @@ The system SHALL reclaim an `IN_PROGRESS` row whose `locked_at` is older than 30
 
 ### Requirement: Dead-letter exhausted outbound work
 
-The system SHALL mark a row `DEAD` after a permanent failure, 20 retryable failures, 100 throttles, or exhausted stale recovery, with a stable error code. A `DEAD` row SHALL block later rows for the same card and SHALL not be processed until an Admin requeues it. Notification failure SHALL NOT change the row.
+The system SHALL mark a row `DEAD` after a permanent failure, 20 retryable failures, or exhausted stale recovery, with a stable error code. A `DEAD` row SHALL block later rows for the same card and SHALL not be processed until an Admin requeues it. Notification failure SHALL NOT change the row.
 
 #### Scenario: Permanent failure dead-letters
 
-- **WHEN** at least one project status maps to the destination but the handler cannot find a direct transition
+- **WHEN** the handler cannot find a direct transition to the destination column
 - **THEN** the row is `DEAD` with `no_transition_path`
 
 #### Scenario: Attempt exhaustion dead-letters
@@ -509,12 +478,12 @@ After Jira becomes reachable, the system SHALL drain a recovered non-dead backlo
 
 ### Requirement: List outbox rows for board Admins
 
-The system SHALL provide `GET /jira/sync/outbox` restricted to board Admins. The list SHALL require `boardId`, default to `DEAD`, support `limit` and `cursor`, and return the board's rows newest first with status, attempts, throttles, error code and sanitized last error. It SHALL answer 400 for a missing board, 403 for a non-Admin member and 404 for an unknown or inaccessible board.
+The system SHALL provide `GET /jira/sync/outbox` restricted to board Admins. The list SHALL require `boardId`, default to `DEAD`, support `limit` and `cursor`, and return the board's rows newest first with status, attempts, error code and sanitized last error. It SHALL answer 400 for a missing board, 403 for a non-Admin member and 404 for an unknown or inaccessible board.
 
 #### Scenario: Admin lists dead letters
 
 - **WHEN** a board Admin requests the default list
-- **THEN** the response contains that board's `DEAD` rows, newest first, with status, attempts, throttles, error code and sanitized last error
+- **THEN** the response contains that board's `DEAD` rows, newest first, with status, attempts, error code and sanitized last error
 
 #### Scenario: Non-admin list is forbidden
 
@@ -533,12 +502,12 @@ The system SHALL provide `GET /jira/sync/outbox` restricted to board Admins. The
 
 ### Requirement: Requeue a dead outbox row
 
-The system SHALL provide `POST /jira/sync/outbox/{outboxId}/requeue` restricted to board Admins. It SHALL answer 404 for an unknown row, 403 for a non-Admin, and 409 when the row is not `DEAD` or an earlier non-`SENT` row blocks it. An eligible row SHALL become `PENDING` with attempts and throttles reset, its error cleared and its lock released. A later `PENDING` same-operation row SHALL be merged into it and marked `SENT`/`superseded`. Requeue SHALL NOT call Jira or expose secrets.
+The system SHALL provide `POST /jira/sync/outbox/{outboxId}/requeue` restricted to board Admins. It SHALL answer 404 for an unknown row, 403 for a non-Admin, and 409 when the row is not `DEAD` or an earlier non-`SENT` row blocks it. An eligible row SHALL become `PENDING` with attempts reset, its error cleared and its lock released. A later `PENDING` same-operation row SHALL be merged into it and marked `SENT`/`superseded`. Requeue SHALL NOT call Jira or expose secrets.
 
 #### Scenario: Single requeue resets the row
 
 - **WHEN** an Admin requeues an unblocked `DEAD` row
-- **THEN** its attempts and throttles are reset, its error is cleared and it becomes `PENDING`
+- **THEN** its attempts are reset, its error is cleared and it becomes `PENDING`
 
 #### Scenario: Single requeue rejects an invalid row
 
@@ -559,40 +528,6 @@ The system SHALL provide `POST /jira/sync/outbox/{outboxId}/requeue` restricted 
 
 - **WHEN** a later `PENDING` row for the same card and operation exists
 - **THEN** its payload is merged into the requeued row and the later row is `SENT`/`superseded`
-
-### Requirement: Bulk requeue dead outbox rows
-
-The system SHALL provide `POST /jira/sync/outbox/requeue?boardId=...` restricted to board Admins. It SHALL scan the board's `DEAD` rows in `sequence` order, requeue only rows with no earlier non-`SENT` row for their card, and return `{ requeued: n }`. A second call with nothing eligible SHALL return 0. It SHALL answer 400 for a missing `boardId`, 403 for a non-Admin and 404 for an unknown board. It SHALL NOT call Jira.
-
-#### Scenario: Bulk requeue preserves per-card order
-
-- **WHEN** a board has several dead cards and one card has two dead rows
-- **THEN** every card's head is requeued and the second dead row for a card is left blocked
-
-#### Scenario: Bulk requeue returns the count
-
-- **WHEN** three unblocked dead rows exist
-- **THEN** the response is `{ "requeued": 3 }`
-
-#### Scenario: Bulk requeue is idempotent
-
-- **WHEN** the same bulk requeue is called again immediately
-- **THEN** it returns `{ "requeued": 0 }`
-
-#### Scenario: Missing bulk board id is invalid
-
-- **WHEN** the bulk requeue is called without `boardId`
-- **THEN** the response is 400
-
-#### Scenario: Non-admin bulk requeue is forbidden
-
-- **WHEN** a board Member calls the bulk requeue
-- **THEN** the response is 403
-
-#### Scenario: Unknown bulk board is not found
-
-- **WHEN** the board is unknown or the caller is not a member
-- **THEN** the response is 404
 
 ### Requirement: Notify dead-letter recipients
 

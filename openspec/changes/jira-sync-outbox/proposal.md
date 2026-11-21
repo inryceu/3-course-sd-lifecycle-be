@@ -18,34 +18,28 @@ original event, so a delayed retry would have no budget left.
   a monotonic sequence. A handler registry dispatches `TRANSITION_ISSUE`; KAN-44 and KAN-45 can add
   handlers later without schema changes.
 - **Status move semantics.** The handler re-reads the current Jira status. If it maps to the target
-  column it marks the row `SENT` as a no-op. If no Jira status maps to the target column at all, it
-  also marks the row `SENT` as `unmapped_target` and does not notify. Otherwise it selects one direct
-  transition; a mapped target with no available direct transition is a permanent
-  `no_transition_path` failure. Multi-step paths are out of scope.
+  column it marks the row `SENT` as a no-op. Otherwise it selects one direct transition; when no
+  available direct transition reaches the target column it fails permanently with
+  `no_transition_path`. Multi-step paths are out of scope.
 - **Ordering and coalescing.** `PENDING` rows for the same operation and card coalesce to the latest
   target. The worker claims the head-of-line row per card with `FOR UPDATE SKIP LOCKED` and a final
-  `PENDING` re-check, so two workers cannot process one card out of order. `IN_PROGRESS` and `SENT`
-  rows are never coalesced.
-- **Retry and rate limiting.** Transient network, timeout and 5xx failures use capped full-jitter
-  exponential backoff: 1s base, 30s cap, 20 attempts. A 429 does not consume the retry budget; it
-  increments `throttled_count` and retries with `Retry-After` clamped to 30s, dead-lettering at 100
-  throttles with `rate_limited_exhausted`. Permanent failures (401 after refresh, 403, 404, no path)
-  dead-letter immediately. A 400 or 409 from the transition POST re-reads the issue status to tell a
-  race from a rejection.
+  `PENDING` re-check, so two workers cannot process one card out of order. `IN_PROGRESS`, `SENT` and
+  `DEAD` rows are never coalesced.
+- **Retry and rate limiting.** Transient network, timeout, 5xx and 429 failures use capped full-jitter
+  exponential backoff: 1s base, 30s cap, 20 attempts. A 429 honours `Retry-After` clamped to the 30s
+  cap and consumes an attempt, so `MAX_ATTEMPTS=20` covers it. Permanent failures (401 after refresh,
+  403, 404, no transition path) dead-letter immediately. A 400 or 409 from the transition POST
+  re-reads the issue status to tell a race from a rejection.
 - **Dead-letter and Admin surface.** After 20 retry attempts a row is `DEAD` and blocks later rows
-  for the same card. Board Admins can list outbox rows, requeue one row, or requeue all unblocked
-  `DEAD` rows for a board; a bulk requeue returns the count. A dead-lettered transition notifies all
-  board Admins and the mover, deduplicated, with type `jira.sync.failed`.
+  for the same card. Board Admins can list outbox rows and requeue one row. A dead-lettered
+  transition notifies all board Admins and the mover, deduplicated, with type `jira.sync.failed`.
 - **Timing and stale recovery.** The 5s budget starts at each attempt, not at event time. Stale
   `IN_PROGRESS` rows are reclaimed after 30s on every poll. With the defaults and the documented
   sizing assumption (backlog up to about 500 rows, Jira latency up to 200ms per call, concurrency 5)
   a recovered backlog drains within 60s; the component test covers at least 100 rows.
-- **Gateway 429 classification (Phase 5).** A 429 whose `Retry-After` cannot fit the per-call budget
-  must surface as `JiraRateLimitedError`, not a time-budget failure. This is a separate, small step
-  with tests for every existing gateway caller, including inbound sync and KAN-45 paths when present.
-- **Contract and documentation.** OpenAPI gains the outbox list, single-requeue and bulk-requeue
-  operations, outbox schemas, `jira.sync.failed` and `throttledCount`/error fields. Architecture
-  docs, the environment example and the OpenSpec specs are updated.
+- **Contract and documentation.** OpenAPI gains the outbox list and single-requeue operations, outbox
+  schemas, `jira.sync.failed` and error fields. Architecture docs, the environment example and the
+  OpenSpec specs are updated.
 
 ### Non-goals
 
@@ -55,8 +49,7 @@ original event, so a delayed retry would have no budget left.
 - A system-wide Admin role; all outbox administration is board-scoped.
 - Exactly-once notification delivery; notifications are best-effort and the Admin API is
   authoritative.
-- Changing KAN-44 or KAN-45 business logic beyond the shared gateway 429 classification needed by
-  T-35.
+- Changing KAN-44 or KAN-45 business logic.
 
 ## Capabilities
 
@@ -67,31 +60,31 @@ None.
 ### Modified Capabilities
 
 - `jira-status-sync`: durable outbox, direct-only transition execution, coalescing, head-of-line
-  ordering, retry and backoff, 429 throttle handling, dead-letter blocking, stale recovery, Admin
-  requeue and dead-letter notifications.
-- `api-contract`: Jira sync outbox list/single-requeue/bulk-requeue operations and the
-  `jira.sync.failed` notification contract.
+  ordering, retry and backoff, dead-letter blocking, stale recovery, Admin requeue and dead-letter
+  notifications.
+- `api-contract`: Jira sync outbox list/single-requeue operations and the `jira.sync.failed`
+  notification contract.
 
 ## Impact
 
 - Modules: new `src/common/outbox`; `src/modules/boards` (`CardsService`, notifications and facade);
-  `src/modules/jira-sync` (handler, outbox worker, admin API, gateway 429 classification);
-  `src/app.module.ts` and `src/main.ts`.
-- Database: new `sync_outbox` table with `throttled_count`, PENDING and IN_PROGRESS partial unique
-  indexes, a monotonic sequence, due and claim indexes; a new migration. If KAN-45 lands first, its
-  migration is `1794596054264-JiraSyncConflicts.ts`; the current branch head is
-  `1794591351977-JiraIssueMappingWatermark.ts`. Coordinate the migration timestamp and expected
-  tables with that merge order. Update `src/config/database-config.ts` so the CLI discovers the
-  common outbox entity, and update migration e2e expected tables if the suite asserts them.
+  `src/modules/jira-sync` (handler, outbox worker, admin API); `src/app.module.ts` and `src/main.ts`.
+- Database: new `sync_outbox` table with PENDING and IN_PROGRESS partial unique indexes, a monotonic
+  sequence, and claim/admin indexes; a new migration. The migration timestamp must be greater than
+  `1794591351977`, and greater than `1794596054264` if KAN-45 lands first (`JiraSyncConflicts.ts`).
+  Coordinate the migration timestamp and expected tables with that merge order. Update
+  `src/config/database-config.ts` so the CLI discovers the common outbox entity, and add
+  `sync_outbox` to `test/migrations.e2e-spec.ts`.
 - Configuration: `OUTBOX_POLL_INTERVAL_SECONDS=5`, `OUTBOX_BATCH_SIZE=20`, `OUTBOX_CONCURRENCY=5`,
   `OUTBOX_MAX_ATTEMPTS=20`, `OUTBOX_BASE_DELAY_MS=1000`, `OUTBOX_MAX_DELAY_MS=30000`,
-  `OUTBOX_LOCK_STALE_MS=30000`, `OUTBOX_MAX_THROTTLES=100`, `OUTBOX_SENT_RETENTION_DAYS=7`.
-- API and OpenAPI: `GET /jira/sync/outbox`, `POST /jira/sync/outbox/{outboxId}/requeue`,
-  `POST /jira/sync/outbox/requeue?boardId=...`; 403/404/409 semantics; `jira.sync.failed`.
-- Tests: unit, DB/e2e, gateway, and component outage/throughput tests (at least 100 rows, 60s
-  simulated recovery).
+  `OUTBOX_LOCK_STALE_MS=30000`, `OUTBOX_SENT_RETENTION_DAYS=7`. `test/setup-env.ts` sets the poll
+  interval to 0.
+- API and OpenAPI: `GET /jira/sync/outbox`, `POST /jira/sync/outbox/{outboxId}/requeue`;
+  403/404/409 semantics; `jira.sync.failed`.
+- Tests: unit, DB/e2e and component outage/throughput tests (at least 100 rows, 60s simulated
+  recovery).
 - Documentation: `docs/jira-status-sync.md`, `docs/api/openapi.yaml`,
   `docs/architecture/module-structure.md`, `.env.example`, `README.md` and the verification record.
 - Dependencies: none. No tokens or secrets in `last_error`, logs or Admin responses.
 - Risk: KAN-45 also changes `JiraStatusSyncService`, notifications and migrations. Coordinate the
-  merge order. The gateway 429 change is isolated to Phase 5.
+  merge order.

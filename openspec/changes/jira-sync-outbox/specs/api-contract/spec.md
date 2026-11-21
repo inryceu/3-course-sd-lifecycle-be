@@ -13,7 +13,7 @@ The repository SHALL contain `docs/api/openapi.yaml` describing every REST area 
 
 #### Scenario: Outbox operations are present
 - **WHEN** a reader opens the `jira` tag
-- **THEN** the outbox list, single requeue and bulk requeue operations are documented
+- **THEN** the outbox list and single requeue operations are documented
 
 ## ADDED Requirements
 
@@ -45,23 +45,9 @@ The repository SHALL contain `docs/api/openapi.yaml` describing every REST area 
 - **WHEN** the spec is validated with the OpenAPI validator
 - **THEN** the requeue operation is valid
 
-### Requirement: Jira sync outbox bulk requeue operation
-
-`docs/api/openapi.yaml` SHALL describe `POST /jira/sync/outbox/requeue` as a board-Admin operation with a required `boardId`, returning `RequeueOutboxResult` `{ requeued }`. It SHALL document 200, 400, 401, 403 and 404, SHALL be documented separately from `{outboxId}`, and SHALL NOT carry `x-implemented-in` once implemented.
-
-#### Scenario: Bulk requeue is documented
-
-- **WHEN** a reader opens `POST /jira/sync/outbox/requeue`
-- **THEN** the required `boardId`, 200, 400, 401, 403 and 404 are documented with `{ requeued }`
-
-#### Scenario: Bulk requeue contract validates
-
-- **WHEN** the spec is validated with the OpenAPI validator
-- **THEN** the bulk requeue operation and `RequeueOutboxResult` are valid
-
 ### Requirement: Outbox entry schema
 
-`OutboxEntry` SHALL define `id`, `boardId`, `cardId`, nullable `actorId`, `operation`, `status` (`PENDING`, `IN_PROGRESS`, `SENT`, `DEAD`), `attempts`, `throttledCount`, `availableAt`, nullable `lockedAt`, nullable sanitized `lastError`, `sequence` (decimal string), `createdAt` and `updatedAt`. It SHALL NOT define token, secret or raw Jira body fields.
+`OutboxEntry` SHALL define `id`, `boardId`, `cardId`, nullable `actorId`, `operation`, `status` (`PENDING`, `IN_PROGRESS`, `SENT`, `DEAD`), `attempts`, `availableAt`, nullable `lockedAt`, nullable sanitized `lastError`, `sequence` (decimal string), `createdAt` and `updatedAt`. It SHALL NOT define token, secret or raw Jira body fields.
 
 #### Scenario: Frontend type is generated
 
@@ -73,19 +59,19 @@ The repository SHALL contain `docs/api/openapi.yaml` describing every REST area 
 - **WHEN** a reader inspects `OutboxEntry`
 - **THEN** no token, secret or raw provider body field is defined
 
-### Requirement: Outbox paging and bulk result schemas
+### Requirement: Outbox paging schema
 
-`OutboxPage` SHALL define `items` and nullable `nextCursor`; `RequeueOutboxResult` SHALL define `requeued`. Both SHALL reference the shared error and paging components where applicable.
+`OutboxPage` SHALL define `items` and nullable `nextCursor`, referencing the shared error and paging components where applicable.
 
-#### Scenario: Frontend page and result types are generated
+#### Scenario: Frontend page type is generated
 
 - **WHEN** the frontend regenerates types from the spec
-- **THEN** `OutboxPage` and `RequeueOutboxResult` are available
+- **THEN** `OutboxPage` is available
 
-#### Scenario: Schemas validate
+#### Scenario: Schema validates
 
 - **WHEN** the spec is validated with the OpenAPI validator
-- **THEN** both schemas are valid
+- **THEN** `OutboxPage` is valid
 
 ### Requirement: Outbox operations are board-Admin scoped
 
@@ -99,7 +85,7 @@ All outbox operations SHALL document 401 for an unauthenticated caller, 403 for 
 #### Scenario: Contract validation passes
 
 - **WHEN** the spec is validated with the OpenAPI validator
-- **THEN** all three outbox operations and their schemas are valid
+- **THEN** all outbox operations and their schemas are valid
 
 ### Requirement: Dead-letter notification contract
 
