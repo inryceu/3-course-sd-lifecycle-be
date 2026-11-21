@@ -35,7 +35,7 @@ original event, so a delayed retry would have no budget left.
   transition notifies all board Admins and the mover, deduplicated, with type `jira.sync.failed`.
 - **Timing and stale recovery.** The 5s budget starts at each attempt, not at event time. Stale
   `IN_PROGRESS` rows are reclaimed after 30s on every poll. With the defaults and the documented
-  sizing assumption (backlog up to about 500 rows, Jira latency up to 200ms per call, concurrency 5)
+  sizing assumption (guaranteed for up to 100 rows across distinct cards, Jira latency up to 200ms per call, concurrency 5; larger backlogs are best-effort and need a higher OUTBOX_CONCURRENCY)
   a recovered backlog drains within 60s; the component test covers at least 100 rows.
 - **Contract and documentation.** OpenAPI gains the outbox list and single-requeue operations, outbox
   schemas, `jira.sync.failed` and error fields. Architecture docs, the environment example and the

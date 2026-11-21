@@ -145,7 +145,11 @@ FOR UPDATE OF o SKIP LOCKED
 The selected ids are then claimed in one `UPDATE ... WHERE id = ANY(:ids) AND status = 'PENDING'`,
 setting `locked_by` to a stable worker id. A partial unique index on
 `(card_id) WHERE status = 'IN_PROGRESS'` makes a double claim fail loudly. Requeue and stale reclaim
-clear `locked_by`. A different card can be processed concurrently.
+clear `locked_by`. A different card can be processed concurrently. 
+
+`complete` and `fail` update a row only `WHERE id = :id AND status = 'IN_PROGRESS' AND locked_by = :worker`,
+so a worker that lost its lock cannot overwrite a reclaimed row. A unique violation (SQLSTATE `23505`) on
+the `IN_PROGRESS` index during claim is caught and ignored; the worker retries on the next tick.
 
 The scheduler claims at most `min(OUTBOX_BATCH_SIZE, freeSlots)` due heads, starts them, and refills a
 freed slot as soon as a handler finishes while any due head remains. `OUTBOX_POLL_INTERVAL_SECONDS`
@@ -268,6 +272,9 @@ All operations are board-scoped and require `BoardRole.ADMIN`:
     `locked_by = null`, `available_at = now`.
   - If a later `PENDING` row for the same operation exists, its payload/actor are merged into the
     requeued row and the later row is marked `SENT`/`superseded`.
+  - Inside one transaction, the later `PENDING` same-operation row is first marked
+    `SENT`/`superseded`, and only then is the `DEAD` row updated to `PENDING`;
+    the reverse order would violate the `PENDING` partial unique index.
   - Returns the requeued row.
 
 The single-row route is `POST /outbox/{outboxId}/requeue`. Requeue does not call Jira; the worker
