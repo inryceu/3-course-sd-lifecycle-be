@@ -108,6 +108,38 @@ describe('Configuration validation schema', () => {
       expect(formatValidationError(error)).toContain('JWT_SECRET');
     });
 
+    it.each([
+      'change-me-secret-key-for-local-development-only-min-32-chars',
+      'default-secret-key-for-local-development-only-min-32-chars',
+      'example-secret-key-for-local-development-only-min-32-chars',
+      'your-secret-key-for-local-development-only-min-32-chars',
+      'placeholder-secret-key-for-local-development-only-min-32-chars',
+    ])('rejects placeholder JWT_SECRET=%s in production', (secret) => {
+      const { error } = validate({ ...validConfig, NODE_ENV: 'production', JWT_SECRET: secret });
+      expect(error).toBeDefined();
+      expect(formatValidationError(error)).toContain('JWT_SECRET');
+    });
+
+    it.each([
+      'change-me-secret-key-for-local-development-only-min-32-chars',
+      'default-secret-key-for-local-development-only-min-32-chars',
+      'example-secret-key-for-local-development-only-min-32-chars',
+    ])('accepts placeholder JWT_SECRET=%s in development', (secret) => {
+      const { error } = validate({ ...validConfig, NODE_ENV: 'development', JWT_SECRET: secret });
+      expect(error).toBeUndefined();
+    });
+
+    it('accepts a non-placeholder JWT secret in production', () => {
+      const { error } = validate({
+        ...validConfig,
+        NODE_ENV: 'production',
+        JWT_SECRET: 'prod-jwt-secret-key-for-local-development-only-min-32-chars',
+        JIRA_REDIRECT_URI: 'https://app.example.com/jira/callback',
+        JIRA_WEBHOOK_URL: 'https://app.example.com/api/v1/jira/webhook',
+      });
+      expect(error).toBeUndefined();
+    });
+
     it('defaults the lifetime to 1h', () => {
       const config: Record<string, unknown> = { ...validConfig };
       delete config['JWT_EXPIRES_IN'];

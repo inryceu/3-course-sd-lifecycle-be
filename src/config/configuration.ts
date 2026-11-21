@@ -11,6 +11,7 @@ export interface AppConfig {
   port: number;
   apiPrefix: string;
   frontendUrl: string;
+  trustProxy: number;
 }
 
 export interface JwtConfig {
@@ -62,6 +63,7 @@ export const appConfig = registerAs('app', (): AppConfig => ({
   port: parseInt(process.env['PORT'] ?? '3000', 10),
   apiPrefix: process.env['API_PREFIX'] ?? 'api/v1',
   frontendUrl: process.env['FRONTEND_URL'],
+  trustProxy: parseInt(process.env['TRUST_PROXY'] ?? '0', 10),
 }));
 
 export const databaseConfig = registerAs('database', (): DatabaseConfig => ({

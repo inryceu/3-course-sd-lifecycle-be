@@ -52,6 +52,8 @@ services:
       PORT: 3000
       API_PREFIX: api/v1
       FRONTEND_URL: http://localhost:${WEB_PORT:-8080}
+      # nginx fronts the API, so rate limiting must key on the forwarded client address.
+      TRUST_PROXY: 1
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_USERNAME: boardsync

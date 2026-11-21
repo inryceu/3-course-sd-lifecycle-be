@@ -21,6 +21,20 @@ const accessTokenLifetime = Joi.string()
 
 const isProduction = Joi.valid('production');
 
+const placeholderPatterns = ['change-me', 'default', 'example', 'your-', 'placeholder'];
+
+const noPlaceholderSecret = Joi.string()
+  .min(32)
+  .custom((value: string, helpers) => {
+    const lower = value.toLowerCase();
+    if (placeholderPatterns.some((pattern) => lower.includes(pattern))) {
+      return helpers.error('any.invalid', {
+        error: new Error('JWT_SECRET must not look like a placeholder value in production'),
+      });
+    }
+    return value;
+  });
+
 /**
  * Validation schema for environment variables.
  * The application refuses to start when a required variable is missing or invalid.
@@ -32,6 +46,8 @@ export const validationSchema = Joi.object({
   PORT: Joi.number().port().min(1).default(3000),
   API_PREFIX: Joi.string().default('api/v1'),
   FRONTEND_URL: Joi.string().uri().required(),
+  // Number of reverse proxies in front of the app (nginx = 1); makes req.ip the real client.
+  TRUST_PROXY: Joi.number().integer().min(0).default(0),
 
   // Database
   DATABASE_HOST: Joi.string().hostname().required(),
@@ -43,7 +59,14 @@ export const validationSchema = Joi.object({
   DATABASE_POOL_MAX: Joi.number().integer().min(1).default(10),
 
   // Authentication
-  JWT_SECRET: Joi.string().min(32).required(),
+  JWT_SECRET: Joi.string()
+    .min(32)
+    .required()
+    .when('NODE_ENV', {
+      is: isProduction,
+      then: noPlaceholderSecret,
+      otherwise: Joi.string().min(32).required(),
+    }),
   JWT_EXPIRES_IN: accessTokenLifetime,
   BCRYPT_ROUNDS: Joi.number().integer().min(10).max(15).default(10),
 
