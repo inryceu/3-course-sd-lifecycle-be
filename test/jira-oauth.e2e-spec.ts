@@ -15,6 +15,7 @@ import {
   registerUser,
   TestUser,
 } from './helpers';
+import { undocumentedRoute } from './openapi-skip';
 
 interface Seen {
   method: string;
@@ -358,6 +359,6 @@ describe('Jira OAuth 2.0 (3LO) connection (e2e)', () => {
 
   it('no longer exposes the unauthenticated stub endpoints', async () => {
     const { admin } = await setup();
-    await get(admin, '/jira-sync/board/some-board').expect(404);
+    await undocumentedRoute(get(admin, '/jira-sync/board/some-board')).expect(404);
   });
 });

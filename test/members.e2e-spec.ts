@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import request from 'supertest';
@@ -115,6 +116,44 @@ describe('Board members and card assignment (e2e)', () => {
       await request(server)
         .get(`${PREFIX}/boards/${board.id}/members`)
         .set(bearer(stranger))
+        .expect(404);
+    });
+
+    it('answers 404 when removing or demoting someone who is not a member', async () => {
+      const admin = await registerUser(app, 'nm-admin');
+      const stranger = await registerUser(app, 'nm-stranger');
+      const board = await createBoard(app, admin);
+      const remove = (userId: string) =>
+        request(server)
+          .delete(`${PREFIX}/boards/${board.id}/members/${userId}`)
+          .set(bearer(admin));
+
+      await setRole(board.id, admin, stranger, 'VIEWER').expect(404);
+      await remove(stranger.id).expect(404);
+      await remove(randomUUID()).expect(404);
+    });
+
+    it('closes the board to a removed member and answers 404 when removing them again', async () => {
+      const admin = await registerUser(app, 'rm-admin');
+      const bob = await registerUser(app, 'rm-bob');
+      const board = await createBoard(app, admin);
+      await invite(board.id, admin, bob.email).expect(201);
+      await request(server).get(`${PREFIX}/boards/${board.id}`).set(bearer(bob)).expect(200);
+
+      await request(server)
+        .delete(`${PREFIX}/boards/${board.id}/members/${bob.id}`)
+        .set(bearer(admin))
+        .expect(204);
+
+      await request(server).get(`${PREFIX}/boards/${board.id}`).set(bearer(bob)).expect(404);
+      await request(server)
+        .get(`${PREFIX}/boards/${board.id}/members`)
+        .set(bearer(bob))
+        .expect(404);
+      await setRole(board.id, admin, bob, 'VIEWER').expect(404);
+      await request(server)
+        .delete(`${PREFIX}/boards/${board.id}/members/${bob.id}`)
+        .set(bearer(admin))
         .expect(404);
     });
   });
