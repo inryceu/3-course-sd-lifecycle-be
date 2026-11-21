@@ -49,6 +49,7 @@ function setup(role: BoardRole | null = BoardRole.ADMIN) {
     setJiraProjectKey: jest.fn(),
     upsertCardFromExternal: jest.fn(),
     moveCardFromExternal: jest.fn(),
+    notifyBoardAdmins: jest.fn(),
   };
   const atlassian: jest.Mocked<AtlassianOAuth> = {
     exchangeCode: jest.fn().mockResolvedValue({
