@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { EVENT_PUBLISHER, EventPublisher, createEvent } from '../../../common/events';
 import { AUTH_FACADE, AuthFacade } from '../../auth';
 import { BoardRole } from '../domain/board-role';
 import { BoardMembershipEntity } from '../infrastructure/persistence/board-membership.entity';
@@ -30,6 +31,7 @@ export class MembersService {
     private readonly memberships: Repository<BoardMembershipEntity>,
     private readonly access: BoardAccessService,
     @Inject(AUTH_FACADE) private readonly auth: AuthFacade,
+    @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
 
   async list(userId: string, boardId: string): Promise<MemberView[]> {
@@ -173,6 +175,11 @@ export class MembersService {
 
       await manager.remove(membership);
     });
+
+    // Lets realtime evict the user's sockets from the board room.
+    await this.events.publish(
+      createEvent('member.removed', { boardId, actorId, payload: { userId: targetUserId } }),
+    );
   }
 }
 

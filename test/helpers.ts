@@ -31,8 +31,10 @@ export async function registerUser(
   const email = uniqueEmail(label);
   const response = await request(app.getHttpServer())
     .post(`${PREFIX}/auth/register`)
-    .send({ email, password, displayName: label })
-    .expect(201);
+    .send({ email, password, displayName: label });
+
+  expect(response.status).toBe(201);
+
   const body = response.body as { accessToken: string; user: { id: string } };
   return { id: body.user.id, email, token: body.accessToken };
 }
@@ -74,8 +76,10 @@ export async function createBoard(
   const response = await request(app.getHttpServer())
     .post(`${PREFIX}/boards`)
     .set(bearer(owner))
-    .send({ title })
-    .expect(201);
+    .send({ title });
+
+  expect(response.status).toBe(201);
+
   return response.body as BoardBody;
 }
 
@@ -88,8 +92,10 @@ export async function createCard(
   const response = await request(app.getHttpServer())
     .post(`${PREFIX}/columns/${columnId}/cards`)
     .set(bearer(user))
-    .send({ title })
-    .expect(201);
+    .send({ title });
+
+  expect(response.status).toBe(201);
+
   return response.body as CardBody;
 }
 

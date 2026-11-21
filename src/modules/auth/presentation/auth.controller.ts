@@ -1,5 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { loginLimit, RATE_LIMIT_WINDOWS, registerLimit } from '../../../config/rate-limits';
 import { AuthResult, AuthService } from '../application/auth.service';
 import { AuthUser } from '../domain/auth-user';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -14,6 +16,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: registerLimit, ttl: RATE_LIMIT_WINDOWS.auth } })
   @Post('register')
   @ApiOperation({ summary: 'Create an account' })
   @ApiResponse({ status: 201, type: AuthResponseDto })
@@ -23,6 +26,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: loginLimit, ttl: RATE_LIMIT_WINDOWS.auth } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Sign in with e-mail and password' })
