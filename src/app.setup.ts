@@ -2,8 +2,12 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { AppConfig } from './config/configuration';
-import { RealtimeIoAdapter } from './modules/realtime';
+import { AppConfig, RealtimeConfig } from './config/configuration';
+import {
+  ORIGIN_SOCKET_HEADER,
+  originSocketMiddleware,
+  RealtimeIoAdapter,
+} from './modules/realtime';
 
 /**
  * Applies the HTTP and WebSocket settings shared by the real server (main.ts) and the
@@ -14,19 +18,24 @@ export function configureApp(
   app: INestApplication,
   options: { swagger?: boolean } = {},
 ): AppConfig {
-  const appConfig = app.get(ConfigService).getOrThrow<AppConfig>('app');
+  const config = app.get(ConfigService);
+  const appConfig = config.getOrThrow<AppConfig>('app');
   const { apiPrefix, frontendUrl } = appConfig;
 
   app.setGlobalPrefix(apiPrefix);
   // Keep the raw bytes for webhook signature verification and allow Jira's larger payloads.
   (app as NestExpressApplication).useBodyParser('json', { limit: '1mb' });
+  // After the body parser, which would drop the request's async context.
+  app.use(originSocketMiddleware);
   app.enableCors({
     origin: frontendUrl,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', ORIGIN_SOCKET_HEADER],
     credentials: true,
   });
-  app.useWebSocketAdapter(new RealtimeIoAdapter(app, frontendUrl));
+  app.useWebSocketAdapter(
+    new RealtimeIoAdapter(app, frontendUrl, config.getOrThrow<RealtimeConfig>('realtime')),
+  );
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

@@ -81,6 +81,10 @@ export const validationSchema = Joi.object({
 
   // Deadline reminders: seconds between scheduler runs, 0 turns the scheduler off
   REMINDER_INTERVAL_SECONDS: Joi.number().integer().min(0).default(60),
+
+  // Realtime heartbeat in milliseconds (Socket.IO defaults)
+  REALTIME_PING_INTERVAL_MS: Joi.number().integer().positive().default(25000),
+  REALTIME_PING_TIMEOUT_MS: Joi.number().integer().positive().default(20000),
 }).required();
 
 /** Converts a Joi validation error to one readable message listing every problem. */
