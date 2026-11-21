@@ -15,12 +15,14 @@ import {
 import { CardsService } from './cards.service';
 import { NotificationsService } from './notifications.service';
 import { NotificationType } from '../infrastructure/persistence/notification.entity';
+import { CommentsService } from './comments.service';
 
 @Injectable()
 export class BoardsFacadeService implements BoardsFacade {
   constructor(
     private readonly access: BoardAccessService,
     private readonly cards: CardsService,
+    private readonly comments: CommentsService,
     @InjectRepository(BoardEntity) private readonly boards: Repository<BoardEntity>,
     @InjectRepository(BoardColumnEntity) private readonly columns: Repository<BoardColumnEntity>,
     private readonly notifications: NotificationsService,
@@ -59,5 +61,9 @@ export class BoardsFacadeService implements BoardsFacade {
     payload: Record<string, unknown>,
   ): Promise<number> {
     return this.notifications.notifyAdmins(boardId, type, payload);
+  }
+
+  markCommentSynced(cardId: string, commentId: string): Promise<void> {
+    return this.comments.markSynced(cardId, commentId);
   }
 }

@@ -64,4 +64,6 @@ export interface BoardsFacade {
     type: NotificationType,
     payload: Record<string, unknown>,
   ): Promise<number>;
+  /** Marks the comment as synced only when it belongs to the given card. */
+  markCommentSynced(cardId: string, commentId: string): Promise<void>;
 }
