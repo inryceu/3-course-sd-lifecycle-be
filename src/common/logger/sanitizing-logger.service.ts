@@ -1,7 +1,8 @@
-import { Injectable, Logger, LoggerService } from '@nestjs/common';
+import { ConsoleLogger, Injectable } from '@nestjs/common';
 
 const REDACTED = '[REDACTED]';
 
+// `token` and `secret` also cover accessToken, refreshToken, client_secret, clientSecret and the *_SECRET env names.
 const SECRET_KEYS = [
   'JWT_SECRET',
   'TOKEN_ENCRYPTION_KEY',
@@ -10,47 +11,61 @@ const SECRET_KEYS = [
   'DATABASE_PASSWORD',
   'password',
   'accessToken',
+  'refreshToken',
+  'client_secret',
+  'clientSecret',
   'authorization',
+  'token',
+  'secret',
 ];
 
-const SECRET_KEY_PATTERN = SECRET_KEYS.join('|');
-const SECRET_PATTERN = new RegExp(`(${SECRET_KEY_PATTERN})[=:][^,\\n}]*`, 'gi');
+// key, optional closing quote, `=` or `:`, then the value: a quoted string or everything up to , newline or }.
+const SECRET_PATTERN = new RegExp(
+  String.raw`(["']?(?:${SECRET_KEYS.join('|')})["']?\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^,\n}]*)`,
+  'gi',
+);
 
 /**
- * Wraps NestJS `Logger` and redacts known secret keys from every log write
- * before the message reaches stdout, so secrets, tokens and passwords never
- * appear in log output.
+ * Extends the Nest console logger and redacts known secret keys from every log write
+ * before it reaches stdout. It extends `ConsoleLogger` instead of wrapping `Logger`:
+ * installed through `app.useLogger`, a wrapper that calls `Logger` would call itself forever.
  */
 @Injectable()
-export class SanitizingLoggerService implements LoggerService {
-  private readonly logger = new Logger('BoardSync');
-
-  private sanitize(value: string | undefined): string | undefined {
-    if (value === undefined) return undefined;
-    return value.replace(SECRET_PATTERN, `$1=${REDACTED}`);
+export class SanitizingLoggerService extends ConsoleLogger {
+  private sanitize(value: unknown): unknown {
+    if (typeof value === 'string') return value.replace(SECRET_PATTERN, `$1${REDACTED}`);
+    if (value instanceof Error) return this.sanitize(value.stack ?? value.message);
+    if (value !== null && typeof value === 'object') {
+      try {
+        return this.sanitize(JSON.stringify(value));
+      } catch {
+        return value;
+      }
+    }
+    return value;
   }
 
-  log(message: string, context?: string): void {
-    this.logger.log(this.sanitize(message), this.sanitize(context));
+  log(message: unknown, ...optionalParams: unknown[]): void {
+    super.log(this.sanitize(message), ...optionalParams.map((p) => this.sanitize(p)));
   }
 
-  error(message: string, trace?: string, context?: string): void {
-    this.logger.error(
-      this.sanitize(message),
-      this.sanitize(trace),
-      this.sanitize(context),
-    );
+  error(message: unknown, ...optionalParams: unknown[]): void {
+    super.error(this.sanitize(message), ...optionalParams.map((p) => this.sanitize(p)));
   }
 
-  warn(message: string, context?: string): void {
-    this.logger.warn(this.sanitize(message), this.sanitize(context));
+  warn(message: unknown, ...optionalParams: unknown[]): void {
+    super.warn(this.sanitize(message), ...optionalParams.map((p) => this.sanitize(p)));
   }
 
-  debug(message: string, context?: string): void {
-    this.logger.debug(this.sanitize(message), this.sanitize(context));
+  debug(message: unknown, ...optionalParams: unknown[]): void {
+    super.debug(this.sanitize(message), ...optionalParams.map((p) => this.sanitize(p)));
   }
 
-  verbose(message: string, context?: string): void {
-    this.logger.verbose(this.sanitize(message), this.sanitize(context));
+  verbose(message: unknown, ...optionalParams: unknown[]): void {
+    super.verbose(this.sanitize(message), ...optionalParams.map((p) => this.sanitize(p)));
+  }
+
+  fatal(message: unknown, ...optionalParams: unknown[]): void {
+    super.fatal(this.sanitize(message), ...optionalParams.map((p) => this.sanitize(p)));
   }
 }

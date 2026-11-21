@@ -201,49 +201,4 @@ describe('Auth (e2e)', () => {
       expect(res.status).toBe(404);
     });
   });
-
-  describe('Rate limiting', () => {
-    it('rejects register requests above the rate limit with 429', async () => {
-      // First 5 registrations succeed (limit: 5 per 5 min)
-      for (let i = 0; i < 5; i++) {
-        await post('/auth/register', {
-          email: uniqueEmail('rate-register'),
-          password: 'long enough pw',
-          displayName: 'Rate',
-        }).expect(201);
-      }
-
-      // 6th request is rate limited
-      const response = await post('/auth/register', {
-        email: uniqueEmail('rate-register'),
-        password: 'long enough pw',
-        displayName: 'Rate',
-      });
-      expect(response.status).toBe(429);
-    });
-
-    it('rejects login requests above the rate limit with 429', async () => {
-      const email = uniqueEmail('rate-login');
-      await post('/auth/register', {
-        email,
-        password: 'long enough pw',
-        displayName: 'Rate',
-      }).expect(201);
-
-      // First 10 login attempts succeed (limit: 10 per 5 min)
-      for (let i = 0; i < 10; i++) {
-        await post('/auth/login', {
-          email,
-          password: 'long enough pw',
-        }).expect(200);
-      }
-
-      // 11th attempt is rate limited
-      const response = await post('/auth/login', {
-        email,
-        password: 'wrong password',
-      });
-      expect(response.status).toBe(429);
-    });
-  });
 });

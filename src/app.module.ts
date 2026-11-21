@@ -60,6 +60,9 @@ import { RealtimeModule } from './modules/realtime';
     // Stricter limits are applied per-route via @Throttle() decorators.
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60000, limit: 100 }],
+      // The e2e suites register far more users than the auth limits allow; only the
+      // rate-limit suite turns throttling on.
+      skipIf: () => process.env['NODE_ENV'] === 'test' && process.env['THROTTLE_SKIP'] !== 'false',
     }),
   ],
   providers: [

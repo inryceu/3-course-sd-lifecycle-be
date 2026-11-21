@@ -2,6 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AppConfig } from './config/configuration';
 import { RealtimeIoAdapter } from './modules/realtime';
@@ -17,13 +18,20 @@ export function configureApp(
   options: { swagger?: boolean } = {},
 ): AppConfig {
   const appConfig = app.get(ConfigService).getOrThrow<AppConfig>('app');
-  const { apiPrefix, frontendUrl } = appConfig;
+  const { apiPrefix, frontendUrl, trustProxy } = appConfig;
 
   app.setGlobalPrefix(apiPrefix);
   // Keep the raw bytes for webhook signature verification and allow Jira's larger payloads.
   (app as NestExpressApplication).useBodyParser('json', { limit: '1mb' });
-  // Helmet security headers; CSP relaxed so Swagger UI keeps working.
-  app.use(helmet({ contentSecurityPolicy: false }));
+  // Behind nginx req.ip is the proxy; trust its forwarded address so rate limits are per client.
+  if (trustProxy > 0) (app as NestExpressApplication).set('trust proxy', trustProxy);
+  // Helmet security headers with the default CSP. Only the Swagger UI route drops the CSP.
+  const helmetOptions = { frameguard: { action: 'deny' as const } };
+  const strict = helmet(helmetOptions);
+  const docs = helmet({ ...helmetOptions, contentSecurityPolicy: false });
+  app.use((req: Request, res: Response, next: NextFunction) =>
+    (req.path.startsWith(`/${apiPrefix}/docs`) ? docs : strict)(req, res, next),
+  );
   app.enableCors({
     origin: frontendUrl,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

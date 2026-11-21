@@ -1,65 +1,64 @@
-import { SanitizingLoggerService } from './sanitizing-logger.service';
 import { Logger } from '@nestjs/common';
+import { SanitizingLoggerService } from './sanitizing-logger.service';
 
 describe('SanitizingLoggerService', () => {
   let service: SanitizingLoggerService;
-  let errorSpy: jest.SpyInstance;
-  let logSpy: jest.SpyInstance;
+  let out: jest.SpyInstance;
 
   beforeEach(() => {
     service = new SanitizingLoggerService();
-    errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    // ConsoleLogger writes through process.stdout/stderr; capture instead of printing.
+    out = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
+    Logger.overrideLogger(['log', 'error', 'warn', 'debug', 'verbose', 'fatal']);
   });
 
-  it('redacts JWT_SECRET from error messages', () => {
-    service.error('JWT_SECRET=my-secret-value', 'stack trace', 'AuthModule');
-    expect(errorSpy).toHaveBeenCalledWith('JWT_SECRET=[REDACTED]', 'stack trace', 'AuthModule');
+  const written = () => out.mock.calls.map((c) => String(c[0])).join('');
+  const stderr = () =>
+    (process.stderr.write as unknown as jest.SpyInstance).mock.calls
+      .map((c) => String(c[0]))
+      .join('');
+
+  it('works as the static Logger backend without recursing', () => {
+    Logger.overrideLogger(service);
+    expect(() => new Logger('Probe').log('hello password=hunter2')).not.toThrow();
+    expect(written()).toContain('password=[REDACTED]');
+    expect(written()).not.toContain('hunter2');
   });
 
-  it('redacts accessToken from log messages', () => {
-    service.log('accessToken=eyJhbGciOiJIUzI1NiJ9', 'TokenService');
-    expect(logSpy).toHaveBeenCalledWith('accessToken=[REDACTED]', 'TokenService');
-  });
-
-  it('redacts password from warn messages', () => {
-    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    service.warn('password=supersecret');
-    expect(warnSpy).toHaveBeenCalledWith('password=[REDACTED]', undefined);
-    warnSpy.mockRestore();
-  });
-
-  it('redacts DATABASE_PASSWORD from error messages', () => {
-    service.error('DATABASE_PASSWORD=db-secret', undefined, 'DatabaseModule');
-    expect(errorSpy).toHaveBeenCalledWith(
-      'DATABASE_PASSWORD=[REDACTED]',
-      undefined,
-      'DatabaseModule',
-    );
-  });
-
-  it('redacts authorization header from debug messages', () => {
-    const debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
-    service.debug('authorization: Bearer eyJhbGciOiJIUzI1NiJ9');
-    expect(debugSpy).toHaveBeenCalledWith('authorization=[REDACTED]', undefined);
-    debugSpy.mockRestore();
-  });
-
-  it('does not modify messages without secrets', () => {
-    service.log('normal log message', 'TestModule');
-    expect(logSpy).toHaveBeenCalledWith('normal log message', 'TestModule');
-  });
-
-  it('redacts multiple secrets in one message', () => {
-    service.error('JWT_SECRET=abc123, DATABASE_PASSWORD=def456');
-    expect(errorSpy).toHaveBeenCalledWith(
+  it.each([
+    ['JWT_SECRET=my-secret-value', 'JWT_SECRET=[REDACTED]'],
+    ['accessToken=eyJhbGciOiJIUzI1NiJ9', 'accessToken=[REDACTED]'],
+    ['refreshToken=abc.def', 'refreshToken=[REDACTED]'],
+    ['client_secret=s3', 'client_secret=[REDACTED]'],
+    ['clientSecret: s3', 'clientSecret: [REDACTED]'],
+    ['token=t0', 'token=[REDACTED]'],
+    ['authorization: Bearer eyJhbGciOiJIUzI1NiJ9', 'authorization: [REDACTED]'],
+    ['{"password":"hunter2"}', '{"password":[REDACTED]}'],
+    ['{"refreshToken": "a b c", "x": 1}', '{"refreshToken": [REDACTED], "x": 1}'],
+    ['DATABASE_PASSWORD=db-secret', 'DATABASE_PASSWORD=[REDACTED]'],
+    [
+      'JWT_SECRET=abc123, DATABASE_PASSWORD=def456',
       'JWT_SECRET=[REDACTED], DATABASE_PASSWORD=[REDACTED]',
-      undefined,
-      undefined,
-    );
+    ],
+  ])('redacts %s', (input, expected) => {
+    service.log(input, 'Ctx');
+    expect(written()).toContain(expected);
+  });
+
+  it('redacts error messages and objects', () => {
+    service.error('password=supersecret', 'trace', 'Ctx');
+    service.warn({ password: 'hunter2' });
+    expect(stderr()).not.toContain('supersecret');
+    expect(stderr()).not.toContain('hunter2');
+  });
+
+  it('leaves messages without secrets alone', () => {
+    service.log('normal log message', 'TestModule');
+    expect(written()).toContain('normal log message');
   });
 });

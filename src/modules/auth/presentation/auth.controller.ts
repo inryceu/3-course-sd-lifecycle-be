@@ -15,7 +15,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Public()
-  @Throttle({ register: { limit: 5, ttl: 300000 } })
+  @Throttle({ default: { limit: 5, ttl: 300000 } })
   @Post('register')
   @ApiOperation({ summary: 'Create an account' })
   @ApiResponse({ status: 201, type: AuthResponseDto })
@@ -25,7 +25,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ login: { limit: 10, ttl: 300000 } })
+  @Throttle({ default: { limit: 10, ttl: 300000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Sign in with e-mail and password' })

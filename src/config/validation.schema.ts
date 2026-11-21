@@ -46,6 +46,8 @@ export const validationSchema = Joi.object({
   PORT: Joi.number().port().min(1).default(3000),
   API_PREFIX: Joi.string().default('api/v1'),
   FRONTEND_URL: Joi.string().uri().required(),
+  // Number of reverse proxies in front of the app (nginx = 1); makes req.ip the real client.
+  TRUST_PROXY: Joi.number().integer().min(0).default(0),
 
   // Database
   DATABASE_HOST: Joi.string().hostname().required(),

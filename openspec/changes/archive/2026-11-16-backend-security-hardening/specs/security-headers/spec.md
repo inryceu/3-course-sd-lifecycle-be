@@ -11,11 +11,11 @@ The system SHALL include a baseline set of security headers on every HTTP respon
 
 #### Scenario: Helmet headers applied
 - **WHEN** a client receives any HTTP response from the API
-- **THEN** the response includes `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `X-XSS-Protection: 1; mode=block`
+- **THEN** the response includes `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `X-XSS-Protection: 0` (the legacy filter is disabled on purpose)
 
 #### Scenario: Content-Security-Policy relaxed for Swagger
 - **WHEN** a client requests the Swagger documentation page
-- **THEN** the response does not block Swagger UI assets via Content-Security-Policy
+- **THEN** the response carries no Content-Security-Policy that blocks Swagger UI assets, while every other route keeps the default policy
 
 ### Requirement: Helmet middleware enabled
 The system SHALL enable helmet as global HTTP middleware for all routes.
