@@ -46,7 +46,7 @@ Pure refactors and documentation do not need a change.
 
 1. Open a PR into `dev` from your `KAN-<n>` branch; the template is pre-filled - fill every section (Jira key, summary, OpenSpec link, test evidence, SOLID/boundaries checklist).
 2. CI must be green: **Lint**, **TypeCheck**, **Tests**, **Build**, **Docker Build**.
-   - **Tests** fails below the agreed line coverage: 70 % for the whole repository (both repos) and 85 % for each backend `auth` / `jira-sync` application service. The report is attached to the workflow run as the `coverage` artifact.
+   - **Tests** fails below the agreed line coverage: 75 % for the whole repository (both repos); frontend `src/features/boards` and `src/features/cards` 95 % lines / 90 % and 85 % branches; backend `auth` / `jira-sync` application services 85 % each and `boards` services 80 % each, `boards` module 90 % (printed by `scripts/check-service-coverage.mjs` in the log). The report is attached to the workflow run as the `coverage` artifact.
    - **Docker Build** builds the `production` stage of the `Dockerfile` (not pushed).
 3. At least **one approval** from the ticket's Reviewer (`CODEOWNERS` requests the module owner automatically). Stale approvals are dismissed on new commits; conversations must be resolved.
 4. Squash-merge. Move the Jira ticket to Done.

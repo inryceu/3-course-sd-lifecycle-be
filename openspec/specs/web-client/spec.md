@@ -43,7 +43,7 @@ The web client SHALL let Admins and Members create cards in a column, edit their
 - **THEN** the card shows the new values after reload
 
 ### Requirement: Move cards
-The web client SHALL let Admins and Members move a card within or between columns by drag and drop and by a keyboard-accessible control, update the board optimistically and roll back if the backend rejects the move.
+The web client SHALL let Admins and Members move a card within or between columns by drag and drop and by a keyboard-accessible control, update the board optimistically and roll back if the backend rejects the move. A drop that leaves the card where it is, including a drop on the card itself, SHALL NOT send a request.
 
 #### Scenario: Drag to another column
 - **WHEN** a Member drops a card on another column
@@ -56,6 +56,14 @@ The web client SHALL let Admins and Members move a card within or between column
 #### Scenario: Keyboard move
 - **WHEN** a user moves a card with the card's move control without a pointer
 - **THEN** the card moves to the chosen column
+
+#### Scenario: Drop on itself
+- **WHEN** a Member drops a card on the card itself
+- **THEN** the card keeps its place and no move request is sent
+
+#### Scenario: Viewer cannot move
+- **WHEN** a drop event reaches the board of a Viewer
+- **THEN** no move request is sent
 
 ### Requirement: Role-aware board
 The web client SHALL show a Viewer the board read-only and hide controls the user's role does not allow; the backend remains the authority for permissions.
