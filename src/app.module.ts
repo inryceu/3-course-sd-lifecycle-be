@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { globalLimit, RATE_LIMIT_WINDOWS } from './config/rate-limits';
 import { EventBusModule } from './common/events';
 import { SanitizingLoggerService } from './common/logger/sanitizing-logger.service';
 import { allConfigs, DatabaseConfig } from './config/configuration';
@@ -56,10 +57,10 @@ import { RealtimeModule } from './modules/realtime';
     JiraSyncModule,
     RealtimeModule,
     HealthModule,
-    // Global rate limiting: 100 requests per minute by default.
+    // Global rate limiting: RATE_LIMIT_PER_MINUTE requests per client per minute (default 100).
     // Stricter limits are applied per-route via @Throttle() decorators.
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60000, limit: 100 }],
+      throttlers: [{ ttl: RATE_LIMIT_WINDOWS.global, limit: globalLimit }],
       // The e2e suites register far more users than the auth limits allow; only the
       // rate-limit suite turns throttling on.
       skipIf: () => process.env['NODE_ENV'] === 'test' && process.env['THROTTLE_SKIP'] !== 'false',

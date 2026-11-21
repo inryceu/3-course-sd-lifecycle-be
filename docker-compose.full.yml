@@ -54,6 +54,10 @@ services:
       FRONTEND_URL: http://localhost:${WEB_PORT:-8080}
       # nginx fronts the API, so rate limiting must key on the forwarded client address.
       TRUST_PROXY: 1
+      # Production defaults; the Playwright CI job raises them because it seeds from one client.
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-100}
+      RATE_LIMIT_REGISTER: ${RATE_LIMIT_REGISTER:-5}
+      RATE_LIMIT_LOGIN: ${RATE_LIMIT_LOGIN:-10}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_USERNAME: boardsync
