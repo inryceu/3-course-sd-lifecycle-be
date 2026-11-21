@@ -48,6 +48,10 @@ export const validationSchema = Joi.object({
   FRONTEND_URL: Joi.string().uri().required(),
   // Number of reverse proxies in front of the app (nginx = 1); makes req.ip the real client.
   TRUST_PROXY: Joi.number().integer().min(0).default(0),
+  // Rate limits per client (T-36): global per minute, register/login per 5 minutes.
+  RATE_LIMIT_PER_MINUTE: Joi.number().integer().min(1).default(100),
+  RATE_LIMIT_REGISTER: Joi.number().integer().min(1).default(5),
+  RATE_LIMIT_LOGIN: Joi.number().integer().min(1).default(10),
 
   // Database
   DATABASE_HOST: Joi.string().hostname().required(),
