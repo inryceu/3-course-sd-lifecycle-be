@@ -2,8 +2,15 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { AppConfig } from './config/configuration';
-import { RealtimeIoAdapter } from './modules/realtime';
+import { NextFunction, Request, Response } from 'express';
+import helmet from 'helmet';
+import { AppConfig, RealtimeConfig } from './config/configuration';
+import {
+  ORIGIN_SOCKET_HEADER,
+  originSocketMiddleware,
+  RealtimeIoAdapter,
+} from './modules/realtime';
+import { SanitizingLoggerService } from './common/logger/sanitizing-logger.service';
 
 /**
  * Applies the HTTP and WebSocket settings shared by the real server (main.ts) and the
@@ -14,19 +21,35 @@ export function configureApp(
   app: INestApplication,
   options: { swagger?: boolean } = {},
 ): AppConfig {
-  const appConfig = app.get(ConfigService).getOrThrow<AppConfig>('app');
-  const { apiPrefix, frontendUrl } = appConfig;
+  const config = app.get(ConfigService);
+  const appConfig = config.getOrThrow<AppConfig>('app');
+  const { apiPrefix, frontendUrl, trustProxy } = appConfig;
 
   app.setGlobalPrefix(apiPrefix);
   // Keep the raw bytes for webhook signature verification and allow Jira's larger payloads.
   (app as NestExpressApplication).useBodyParser('json', { limit: '1mb' });
+  // After the body parser, which would drop the request's async context.
+  app.use(originSocketMiddleware);
+  // Behind nginx req.ip is the proxy; trust its forwarded address so rate limits are per client.
+  if (trustProxy > 0) (app as NestExpressApplication).set('trust proxy', trustProxy);
+  // Helmet security headers with the default CSP. Only the Swagger UI route drops the CSP.
+  const helmetOptions = { frameguard: { action: 'deny' as const } };
+  const strict = helmet(helmetOptions);
+  const docs = helmet({ ...helmetOptions, contentSecurityPolicy: false });
+  app.use((req: Request, res: Response, next: NextFunction) =>
+    (req.path.startsWith(`/${apiPrefix}/docs`) ? docs : strict)(req, res, next),
+  );
   app.enableCors({
     origin: frontendUrl,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', ORIGIN_SOCKET_HEADER],
     credentials: true,
   });
-  app.useWebSocketAdapter(new RealtimeIoAdapter(app, frontendUrl));
+  // Sanitizing logger redacts secrets from all log output.
+  app.useLogger(app.get(SanitizingLoggerService));
+  app.useWebSocketAdapter(
+    new RealtimeIoAdapter(app, frontendUrl, config.getOrThrow<RealtimeConfig>('realtime')),
+  );
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

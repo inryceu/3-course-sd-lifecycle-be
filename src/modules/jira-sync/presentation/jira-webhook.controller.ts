@@ -8,11 +8,14 @@ import {
   Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { Public } from '../../../common/decorators/public.decorator';
 import { JiraWebhookService } from '../application/jira-webhook.service';
 
 @ApiTags('jira')
+// Atlassian retries in bursts; the signature check is this endpoint's own guard.
+@SkipThrottle()
 @Controller('jira')
 export class JiraWebhookController {
   constructor(private readonly webhooks: JiraWebhookService) {}

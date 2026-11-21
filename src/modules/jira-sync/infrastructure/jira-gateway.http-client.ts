@@ -295,6 +295,7 @@ export class JiraGatewayHttpClient implements JiraGateway {
       scope: SCOPE_WRITE,
       body: { body: input.body },
       idempotent: false,
+      timeBudgetMs: input.timeBudgetMs,
     });
   }
 

@@ -108,6 +108,38 @@ describe('Configuration validation schema', () => {
       expect(formatValidationError(error)).toContain('JWT_SECRET');
     });
 
+    it.each([
+      'change-me-secret-key-for-local-development-only-min-32-chars',
+      'default-secret-key-for-local-development-only-min-32-chars',
+      'example-secret-key-for-local-development-only-min-32-chars',
+      'your-secret-key-for-local-development-only-min-32-chars',
+      'placeholder-secret-key-for-local-development-only-min-32-chars',
+    ])('rejects placeholder JWT_SECRET=%s in production', (secret) => {
+      const { error } = validate({ ...validConfig, NODE_ENV: 'production', JWT_SECRET: secret });
+      expect(error).toBeDefined();
+      expect(formatValidationError(error)).toContain('JWT_SECRET');
+    });
+
+    it.each([
+      'change-me-secret-key-for-local-development-only-min-32-chars',
+      'default-secret-key-for-local-development-only-min-32-chars',
+      'example-secret-key-for-local-development-only-min-32-chars',
+    ])('accepts placeholder JWT_SECRET=%s in development', (secret) => {
+      const { error } = validate({ ...validConfig, NODE_ENV: 'development', JWT_SECRET: secret });
+      expect(error).toBeUndefined();
+    });
+
+    it('accepts a non-placeholder JWT secret in production', () => {
+      const { error } = validate({
+        ...validConfig,
+        NODE_ENV: 'production',
+        JWT_SECRET: 'prod-jwt-secret-key-for-local-development-only-min-32-chars',
+        JIRA_REDIRECT_URI: 'https://app.example.com/jira/callback',
+        JIRA_WEBHOOK_URL: 'https://app.example.com/api/v1/jira/webhook',
+      });
+      expect(error).toBeUndefined();
+    });
+
     it('defaults the lifetime to 1h', () => {
       const config: Record<string, unknown> = { ...validConfig };
       delete config['JWT_EXPIRES_IN'];
@@ -140,6 +172,23 @@ describe('Configuration validation schema', () => {
     it.each([-1, 1.5, 'soon'])('rejects REMINDER_INTERVAL_SECONDS=%s', (value) => {
       expect(validate({ ...validConfig, REMINDER_INTERVAL_SECONDS: value }).error).toBeDefined();
     });
+  });
+
+  describe('realtime heartbeat', () => {
+    it('defaults the ping interval to 25000 ms and the timeout to 20000 ms', () => {
+      const { value } = validate(validConfig);
+      expect(value.REALTIME_PING_INTERVAL_MS).toBe(25000);
+      expect(value.REALTIME_PING_TIMEOUT_MS).toBe(20000);
+    });
+
+    it.each(['REALTIME_PING_INTERVAL_MS', 'REALTIME_PING_TIMEOUT_MS'])(
+      'rejects a non-positive or fractional %s',
+      (key) => {
+        for (const value of [0, -1, 1.5, 'often']) {
+          expect(validate({ ...validConfig, [key]: value }).error).toBeDefined();
+        }
+      },
+    );
   });
 
   describe('encryption key and secrets', () => {

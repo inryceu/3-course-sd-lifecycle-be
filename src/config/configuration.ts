@@ -11,6 +11,7 @@ export interface AppConfig {
   port: number;
   apiPrefix: string;
   frontendUrl: string;
+  trustProxy: number;
 }
 
 export interface JwtConfig {
@@ -42,6 +43,12 @@ export interface RemindersConfig {
   intervalSeconds: number;
 }
 
+/** Socket.IO heartbeat: the server pings every `pingIntervalMs` and drops a client silent for `pingTimeoutMs`. */
+export interface RealtimeConfig {
+  pingIntervalMs: number;
+  pingTimeoutMs: number;
+}
+
 export interface DatabaseConfig {
   host: string;
   port: number;
@@ -56,6 +63,7 @@ export const appConfig = registerAs('app', (): AppConfig => ({
   port: parseInt(process.env['PORT'] ?? '3000', 10),
   apiPrefix: process.env['API_PREFIX'] ?? 'api/v1',
   frontendUrl: process.env['FRONTEND_URL'],
+  trustProxy: parseInt(process.env['TRUST_PROXY'] ?? '0', 10),
 }));
 
 export const databaseConfig = registerAs('database', (): DatabaseConfig => ({
@@ -104,6 +112,11 @@ export const remindersConfig = registerAs('reminders', (): RemindersConfig => ({
   intervalSeconds: parseInt(process.env['REMINDER_INTERVAL_SECONDS'] ?? '60', 10),
 }));
 
+export const realtimeConfig = registerAs('realtime', (): RealtimeConfig => ({
+  pingIntervalMs: parseInt(process.env['REALTIME_PING_INTERVAL_MS'] ?? '25000', 10),
+  pingTimeoutMs: parseInt(process.env['REALTIME_PING_TIMEOUT_MS'] ?? '20000', 10),
+}));
+
 export const allConfigs = [
   appConfig,
   databaseConfig,
@@ -112,4 +125,5 @@ export const allConfigs = [
   cryptoConfig,
   webhookConfig,
   remindersConfig,
+  realtimeConfig,
 ];

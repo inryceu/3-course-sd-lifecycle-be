@@ -6,12 +6,15 @@ import { BoardMembershipEntity } from '../infrastructure/persistence/board-membe
 import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { CardEntity } from '../infrastructure/persistence/card.entity';
 import { BoardColumnEntity } from '../infrastructure/persistence/column.entity';
+import { CommentEntity } from '../infrastructure/persistence/comment.entity';
 import { BoardAccessService } from './board-access.service';
 import { BoardsFacade } from './boards-facade.port';
 import { BoardsFacadeService } from './boards-facade.service';
 import { BoardsService } from './boards.service';
 import { CardsService } from './cards.service';
+import { NotificationsService } from './notifications.service';
 import { ColumnsService } from './columns.service';
+import { CommentsService } from './comments.service';
 
 const failingTransaction = () => jest.fn().mockRejectedValue(new Error('database down'));
 
@@ -238,20 +241,43 @@ describe('CardsService', () => {
 });
 
 describe('BoardsFacadeService', () => {
+  const comments = (markSynced: jest.Mock = jest.fn().mockResolvedValue(undefined)) =>
+    ({ markSynced }) as unknown as CommentsService;
+
+  const commentsServiceFor = (comment: CommentEntity) => {
+    const findOne = jest.fn((options: { where: { id: string; cardId: string } }) =>
+      Promise.resolve(
+        options.where.id === comment.id && options.where.cardId === comment.cardId ? comment : null,
+      ),
+    );
+    const save = jest.fn((entity: CommentEntity) => Promise.resolve(entity));
+    const service = new CommentsService(
+      repo<CommentEntity>({ findOne, save }),
+      repo<CardEntity>({}),
+      repo<BoardEntity>({}),
+      access(BoardRole.ADMIN),
+      events(),
+    );
+    return { service, findOne, save };
+  };
+
   const facadeWith = (
     role: BoardRole | null,
     cards: Partial<CardsService> = {},
     board: Partial<BoardEntity> | null = null,
     columns: Partial<BoardColumnEntity>[] = [],
+    commentsService: CommentsService = comments(),
   ) =>
     new BoardsFacadeService(
       access(role),
       cards as CardsService,
+      commentsService,
       repo<BoardEntity>({
         findOne: jest.fn().mockResolvedValue(board),
         update: jest.fn().mockResolvedValue({ affected: 1 }),
       }),
       repo<BoardColumnEntity>({ find: jest.fn().mockResolvedValue(columns) }),
+      {} as NotificationsService,
     );
 
   it('exposes the member role via access service', async () => {
@@ -282,5 +308,47 @@ describe('BoardsFacadeService', () => {
 
     expect(await port.upsertCardFromExternal(input)).toEqual({ cardId: 'k1', outcome: 'created' });
     expect(upsertFromExternal).toHaveBeenCalledWith(input);
+  });
+
+  it('delegates comment sync state to the comments service', async () => {
+    const markSynced = jest.fn().mockResolvedValue(undefined);
+    const port: BoardsFacade = facadeWith(null, {}, null, [], comments(markSynced));
+
+    await port.markCommentSynced('card-1', 'comment-1');
+
+    expect(markSynced).toHaveBeenCalledWith('card-1', 'comment-1');
+  });
+
+  it('marks a comment that belongs to the given card', async () => {
+    const comment = Object.assign(new CommentEntity(), {
+      id: 'comment-1',
+      cardId: 'card-1',
+      syncedToJira: false,
+    });
+    const { service, findOne, save } = commentsServiceFor(comment);
+    const port: BoardsFacade = facadeWith(null, {}, null, [], service);
+
+    await port.markCommentSynced('card-1', 'comment-1');
+
+    expect(findOne).toHaveBeenCalledWith({
+      where: { id: 'comment-1', cardId: 'card-1' },
+    });
+    expect(comment.syncedToJira).toBe(true);
+    expect(save).toHaveBeenCalledWith(comment);
+  });
+
+  it('does not mark a comment with the same id under another card', async () => {
+    const comment = Object.assign(new CommentEntity(), {
+      id: 'comment-1',
+      cardId: 'card-1',
+      syncedToJira: false,
+    });
+    const { service, save } = commentsServiceFor(comment);
+    const port: BoardsFacade = facadeWith(null, {}, null, [], service);
+
+    await port.markCommentSynced('card-2', 'comment-1');
+
+    expect(comment.syncedToJira).toBe(false);
+    expect(save).not.toHaveBeenCalled();
   });
 });

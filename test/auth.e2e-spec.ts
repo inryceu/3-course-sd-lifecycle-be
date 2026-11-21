@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { bearer, createTestApp, PREFIX, registerUser, uniqueEmail } from './helpers';
+import { undocumentedRoute } from './openapi-skip';
 
 describe('Auth (e2e)', () => {
   let app: INestApplication;
@@ -197,7 +198,9 @@ describe('Auth (e2e)', () => {
 
     it.each(['refresh', 'logout', 'profile'])('no longer exposes /auth/%s', async (name) => {
       const user = await registerUser(app);
-      const res = await request(server).post(`${PREFIX}/auth/${name}`).set(bearer(user));
+      const res = await undocumentedRoute(
+        request(server).post(`${PREFIX}/auth/${name}`).set(bearer(user)),
+      );
       expect(res.status).toBe(404);
     });
   });
