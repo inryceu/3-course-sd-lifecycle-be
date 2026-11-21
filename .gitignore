@@ -44,4 +44,6 @@ coverage
 *.pem
 .cache
 tmp
+tmp
 temp
+test-results

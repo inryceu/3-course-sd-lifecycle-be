@@ -97,6 +97,21 @@ docker run -d --name bs-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=boa
 DATABASE_HOST=127.0.0.1 DATABASE_PORT=5434 pnpm test:e2e
 ```
 
+### API tests (Postman/Newman)
+
+`test/postman/` holds a Postman collection (`boardsync.postman_collection.json`) and two environments (`local` = http://localhost:8090/api/v1, `ci` = http://localhost:8080/api/v1). It walks the main flows (register, login, me; a board with three default columns; columns and cards; inviting a member and the Viewer restrictions; 401/403/404/400 cases) and asserts the status code and the OpenAPI schema of every response.
+
+The schemas are not copied into the collection: `scripts/run-api-tests.mjs` builds them from `docs/api/openapi.yaml` on each run, so a contract change cannot leave the tests stale. Run the collection through the script, not by importing it into the Postman app.
+
+```bash
+# with the full stack up (next section)
+pnpm test:api                  # local environment, :8090
+pnpm test:api -- --env ci      # ci environment, :8080
+API_BASE_URL=http://host:port/api/v1 pnpm test:api   # any other URL
+```
+
+The console shows the CLI report; the JUnit file is written to `test-results/api-tests.xml`. A run registers 3 users with unique e-mails and deletes its board. The production limit is 5 registrations per 5 minutes per client, so a second run inside that window gets 429: start the stack with `RATE_LIMIT_REGISTER=1000` for repeated runs. CI does this in `.github/workflows/api-tests.yml`.
+
 ## Run the whole system (database + backend + frontend)
 
 With this repository and `3-course-sd-lifecycle-fe` checked out side by side:

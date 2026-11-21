@@ -1,0 +1,1715 @@
+{
+  "info": {
+    "name": "BoardSync API",
+    "description": "T-56 / KAN-67. Response schemas come from docs/api/openapi.yaml via scripts/run-api-tests.mjs (variable `schemas`). Run: pnpm test:api",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('runId')) {",
+          "  pm.collectionVariables.set('runId', Date.now().toString(36) + Math.random().toString(36).slice(2, 6));",
+          "}",
+          "if (!pm.variables.get('schemas')) throw new Error('Missing `schemas`: run the collection through `pnpm test:api` (scripts/run-api-tests.mjs)');"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "password",
+      "value": "Newman-pass-123"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Health));",
+                  "const body = pm.response.json();",
+                  "pm.test('database is up', () => pm.expect(body.database).to.eql('up'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "FR-01 Auth",
+      "item": [
+        {
+          "name": "Register Admin",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('emailA', 'newman-' + pm.collectionVariables.get('runId') + '-a@example.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.AuthResponse));",
+                  "const body = pm.response.json();",
+                  "pm.test('user matches the request', () => pm.expect(body.user.email).to.eql(pm.collectionVariables.get('emailA')));",
+                  "pm.test('token lifetime is at most one hour', () => pm.expect(body.expiresIn).to.be.within(1, 3600));",
+                  "pm.collectionVariables.set('tokenA', body.accessToken);",
+                  "pm.collectionVariables.set('userIdA', body.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailA}}\",\n  \"password\": \"{{password}}\",\n  \"displayName\": \"Newman Admin\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register Viewer",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('emailB', 'newman-' + pm.collectionVariables.get('runId') + '-b@example.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.AuthResponse));",
+                  "const body = pm.response.json();",
+                  "pm.test('user matches the request', () => pm.expect(body.user.email).to.eql(pm.collectionVariables.get('emailB')));",
+                  "pm.test('token lifetime is at most one hour', () => pm.expect(body.expiresIn).to.be.within(1, 3600));",
+                  "pm.collectionVariables.set('tokenB', body.accessToken);",
+                  "pm.collectionVariables.set('userIdB', body.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailB}}\",\n  \"password\": \"{{password}}\",\n  \"displayName\": \"Newman Viewer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register Stranger",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('emailC', 'newman-' + pm.collectionVariables.get('runId') + '-c@example.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.AuthResponse));",
+                  "const body = pm.response.json();",
+                  "pm.test('user matches the request', () => pm.expect(body.user.email).to.eql(pm.collectionVariables.get('emailC')));",
+                  "pm.test('token lifetime is at most one hour', () => pm.expect(body.expiresIn).to.be.within(1, 3600));",
+                  "pm.collectionVariables.set('tokenC', body.accessToken);",
+                  "pm.collectionVariables.set('userIdC', body.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailC}}\",\n  \"password\": \"{{password}}\",\n  \"displayName\": \"Newman Stranger\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.AuthResponse));",
+                  "const body = pm.response.json();",
+                  "pm.test('same user as registered', () => pm.expect(body.user.id).to.eql(pm.collectionVariables.get('userIdA')));",
+                  "pm.collectionVariables.set('tokenA', body.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailA}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.User));",
+                  "const body = pm.response.json();",
+                  "pm.test('returns the signed-in user', () => pm.expect(body.email).to.eql(pm.collectionVariables.get('emailA')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Login with a wrong password -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailA}}\",\n  \"password\": \"wrong-password-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Me without a token -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Me with a garbage token -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{password}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "FR-03 Boards",
+      "item": [
+        {
+          "name": "Create board (3 default columns)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.BoardDetail));",
+                  "const body = pm.response.json();",
+                  "pm.test('creator is ADMIN', () => pm.expect(body.myRole).to.eql('ADMIN'));",
+                  "pm.test('three default columns in order', () => {",
+                  "  pm.expect(body.columns.map((c) => c.type)).to.eql(['TODO', 'IN_PROGRESS', 'DONE']);",
+                  "  pm.expect(body.columns.map((c) => c.position)).to.eql([0, 1, 2]);",
+                  "  pm.expect(body.columns.every((c) => c.cards.length === 0)).to.be.true;",
+                  "});",
+                  "pm.collectionVariables.set('boardId', body.id);",
+                  "pm.collectionVariables.set('colTodo', body.columns[0].id);",
+                  "pm.collectionVariables.set('colProgress', body.columns[1].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Newman board {{runId}}\",\n  \"description\": \"created by the API test run\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards"]
+            }
+          }
+        },
+        {
+          "name": "Create board without a title -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));",
+                  "const body = pm.response.json();",
+                  "pm.test('message lists the invalid field', () => pm.expect(JSON.stringify(body.message)).to.include('title'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards"]
+            }
+          }
+        },
+        {
+          "name": "Create board without a token -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"no auth\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards"]
+            }
+          }
+        },
+        {
+          "name": "List boards",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema({ type: \"array\", items: S.Board }));",
+                  "const body = pm.response.json();",
+                  "pm.test('contains the new board', () => pm.expect(body.map((b) => b.id)).to.include(pm.collectionVariables.get('boardId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards"]
+            }
+          }
+        },
+        {
+          "name": "Get board",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.BoardDetail));",
+                  "const body = pm.response.json();",
+                  "pm.test('is the created board', () => pm.expect(body.id).to.eql(pm.collectionVariables.get('boardId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get board as a stranger -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenC}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get board with a malformed id -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/not-a-uuid",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "not-a-uuid"]
+            }
+          }
+        },
+        {
+          "name": "Update board",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Board));",
+                  "const body = pm.response.json();",
+                  "pm.test('title changed', () => pm.expect(body.title).to.eql('Newman board renamed'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"Newman board renamed\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "FR-04 Columns and cards",
+      "item": [
+        {
+          "name": "Add column",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Column));",
+                  "const body = pm.response.json();",
+                  "pm.test('appended last', () => pm.expect(body.position).to.eql(3));",
+                  "pm.collectionVariables.set('colReview', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"Review\", \"type\": \"REVIEW\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/columns",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "columns"]
+            }
+          }
+        },
+        {
+          "name": "Rename column",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Column));",
+                  "const body = pm.response.json();",
+                  "pm.test('renamed', () => pm.expect(body.title).to.eql('QA'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"QA\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{colReview}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["columns", "{{colReview}}"]
+            }
+          }
+        },
+        {
+          "name": "List columns",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema({ type: \"array\", items: S.Column }));",
+                  "const body = pm.response.json();",
+                  "pm.test('four columns', () => pm.expect(body).to.have.length(4));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/columns",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "columns"]
+            }
+          }
+        },
+        {
+          "name": "Add column with an invalid type -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"x\", \"type\": \"NOPE\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/columns",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "columns"]
+            }
+          }
+        },
+        {
+          "name": "Create card",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Card));",
+                  "const body = pm.response.json();",
+                  "pm.test('in the To Do column at the top', () => { pm.expect(body.columnId).to.eql(pm.collectionVariables.get('colTodo')); pm.expect(body.position).to.eql(0); });",
+                  "pm.collectionVariables.set('cardId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"Write API tests\", \"description\": \"Postman + Newman\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{colTodo}}/cards",
+              "host": ["{{baseUrl}}"],
+              "path": ["columns", "{{colTodo}}", "cards"]
+            }
+          }
+        },
+        {
+          "name": "Create card without a title -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"description\": \"no title\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{colTodo}}/cards",
+              "host": ["{{baseUrl}}"],
+              "path": ["columns", "{{colTodo}}", "cards"]
+            }
+          }
+        },
+        {
+          "name": "Update card",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Card));",
+                  "const body = pm.response.json();",
+                  "pm.test('fields changed', () => { pm.expect(body.title).to.eql('Write API tests (done)'); pm.expect(body.description).to.be.null; pm.expect(body.deadline).to.include('2030-01-01'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"Write API tests (done)\", \"description\": null, \"deadline\": \"2030-01-01T00:00:00.000Z\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/cards/{{cardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["cards", "{{cardId}}"]
+            }
+          }
+        },
+        {
+          "name": "Move card to another column",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Card));",
+                  "const body = pm.response.json();",
+                  "pm.test('now in In Progress', () => { pm.expect(body.columnId).to.eql(pm.collectionVariables.get('colProgress')); pm.expect(body.position).to.eql(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"columnId\": \"{{colProgress}}\", \"position\": 0 }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/cards/{{cardId}}/move",
+              "host": ["{{baseUrl}}"],
+              "path": ["cards", "{{cardId}}", "move"]
+            }
+          }
+        },
+        {
+          "name": "Get card",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Card));",
+                  "const body = pm.response.json();",
+                  "pm.test('move persisted', () => pm.expect(body.columnId).to.eql(pm.collectionVariables.get('colProgress')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/cards/{{cardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["cards", "{{cardId}}"]
+            }
+          }
+        },
+        {
+          "name": "List cards of the column",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema({ type: \"array\", items: S.Card }));",
+                  "const body = pm.response.json();",
+                  "pm.test('contains the moved card', () => pm.expect(body.map((c) => c.id)).to.include(pm.collectionVariables.get('cardId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{colProgress}}/cards",
+              "host": ["{{baseUrl}}"],
+              "path": ["columns", "{{colProgress}}", "cards"]
+            }
+          }
+        },
+        {
+          "name": "Move card with a negative position -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"columnId\": \"{{colProgress}}\", \"position\": -1 }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/cards/{{cardId}}/move",
+              "host": ["{{baseUrl}}"],
+              "path": ["cards", "{{cardId}}", "move"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "FR-08 Members and roles",
+      "item": [
+        {
+          "name": "Invite Viewer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Member));",
+                  "const body = pm.response.json();",
+                  "pm.test('viewer role for user B', () => { pm.expect(body.role).to.eql('VIEWER'); pm.expect(body.userId).to.eql(pm.collectionVariables.get('userIdB')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"email\": \"{{emailB}}\", \"role\": \"VIEWER\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "members"]
+            }
+          }
+        },
+        {
+          "name": "List members",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema({ type: \"array\", items: S.Member }));",
+                  "const body = pm.response.json();",
+                  "pm.test('admin and viewer', () => pm.expect(body.map((m) => m.role).sort()).to.eql(['ADMIN', 'VIEWER']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "members"]
+            }
+          }
+        },
+        {
+          "name": "Invite an unregistered e-mail -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"email\": \"nobody-{{runId}}@example.com\", \"role\": \"MEMBER\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "members"]
+            }
+          }
+        },
+        {
+          "name": "Viewer can read the board",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.BoardDetail));",
+                  "const body = pm.response.json();",
+                  "pm.test('role is VIEWER', () => pm.expect(body.myRole).to.eql('VIEWER'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}"]
+            }
+          }
+        },
+        {
+          "name": "Viewer cannot create a card -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"viewer card\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{colTodo}}/cards",
+              "host": ["{{baseUrl}}"],
+              "path": ["columns", "{{colTodo}}", "cards"]
+            }
+          }
+        },
+        {
+          "name": "Viewer cannot move a card -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"columnId\": \"{{colTodo}}\", \"position\": 0 }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/cards/{{cardId}}/move",
+              "host": ["{{baseUrl}}"],
+              "path": ["cards", "{{cardId}}", "move"]
+            }
+          }
+        },
+        {
+          "name": "Viewer cannot add a column -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"viewer column\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/columns",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "columns"]
+            }
+          }
+        },
+        {
+          "name": "Viewer cannot invite -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"email\": \"{{emailC}}\", \"role\": \"MEMBER\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}", "members"]
+            }
+          }
+        },
+        {
+          "name": "Stranger cannot create a card -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenC}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"title\": \"stranger card\" }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{colTodo}}/cards",
+              "host": ["{{baseUrl}}"],
+              "path": ["columns", "{{colTodo}}", "cards"]
+            }
+          }
+        },
+        {
+          "name": "Stranger cannot read the card -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenC}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/cards/{{cardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["cards", "{{cardId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cleanup",
+      "item": [
+        {
+          "name": "Delete card",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 204', () => pm.response.to.have.status(204));",
+                  "pm.test('empty body', () => pm.expect(pm.response.text()).to.equal(''));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/cards/{{cardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["cards", "{{cardId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get deleted card -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/cards/{{cardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["cards", "{{cardId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete column",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 204', () => pm.response.to.have.status(204));",
+                  "pm.test('empty body', () => pm.expect(pm.response.text()).to.equal(''));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{colReview}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["columns", "{{colReview}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete board",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 204', () => pm.response.to.have.status(204));",
+                  "pm.test('empty body', () => pm.expect(pm.response.text()).to.equal(''));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get deleted board -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "const S = JSON.parse(pm.variables.get('schemas'));",
+                  "pm.test('body matches OpenAPI schema', () => pm.response.to.have.jsonSchema(S.Error));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["boards", "{{boardId}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

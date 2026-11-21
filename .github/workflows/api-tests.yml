@@ -1,0 +1,92 @@
+name: API tests (Newman)
+
+# T-56 / KAN-67: the Postman collection in test/postman/ runs against the full Compose stack
+# (postgres + backend + frontend nginx, see docker-compose.full.yml).
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: api-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9.0.0'
+  BE_DIR: 3-course-sd-lifecycle-be
+  FE_DIR: 3-course-sd-lifecycle-fe
+
+jobs:
+  newman:
+    name: Newman
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.BE_DIR }}
+
+      # The compose file expects the frontend as a sibling checkout (../3-course-sd-lifecycle-fe).
+      # Frontend branch = the PR's target branch (or the pushed branch): dev or main.
+      - name: Checkout frontend
+        uses: actions/checkout@v4
+        with:
+          repository: inryceu/3-course-sd-lifecycle-fe
+          ref: ${{ github.base_ref || github.ref_name }}
+          path: ${{ env.FE_DIR }}
+
+      - name: Start the full stack
+        working-directory: ${{ env.BE_DIR }}
+        # The example env file holds placeholders only; enough to start the stack (no Jira flows).
+        # The run registers 3 users; the production limit is 5 registrations per 5 minutes, so the
+        # limits are raised for re-runs on the same stack.
+        env:
+          RATE_LIMIT_PER_MINUTE: '10000'
+          RATE_LIMIT_REGISTER: '1000'
+          RATE_LIMIT_LOGIN: '1000'
+        run: docker compose --env-file .env.full.example -f docker-compose.full.yml up -d --build --wait
+
+      - name: Wait for the API
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8080/api/v1/health && exit 0
+            sleep 2
+          done
+          exit 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: ${{ env.BE_DIR }}/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: ${{ env.BE_DIR }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Newman
+        working-directory: ${{ env.BE_DIR }}
+        run: pnpm test:api -- --env ci
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-junit
+          path: ${{ env.BE_DIR }}/test-results/api-tests.xml
+          retention-days: 14
+
+      - name: Compose logs
+        if: failure()
+        working-directory: ${{ env.BE_DIR }}
+        run: docker compose --env-file .env.full.example -f docker-compose.full.yml logs --no-color --tail=200
