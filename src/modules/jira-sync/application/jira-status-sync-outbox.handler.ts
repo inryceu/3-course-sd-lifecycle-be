@@ -191,6 +191,7 @@ export class JiraStatusSyncOutboxHandler implements OutboxHandler, OnModuleInit 
         outcome: 'transitioned',
         transitionId: chosen.id,
         targetStatusId: chosen.to.id,
+        targetStatusName: chosen.to.name,
       },
     };
   }

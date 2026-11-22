@@ -127,6 +127,8 @@ interface LinkedCard {
   mappingId: string;
 }
 
+process.env['OUTBOX_POLL_INTERVAL_SECONDS'] = '1';
+
 describe('Jira status sync (e2e)', () => {
   let app: INestApplication;
   let server: ReturnType<INestApplication['getHttpServer']>;
@@ -204,7 +206,10 @@ describe('Jira status sync (e2e)', () => {
     admin = await registerUser(app, 'status-sync-admin');
   });
 
-  beforeEach(() => jira.reset());
+  beforeEach(async () => {
+    jira.reset();
+    await dataSource.query('TRUNCATE sync_outbox');
+  });
 
   afterAll(() => app.close());
 
@@ -281,7 +286,7 @@ describe('Jira status sync (e2e)', () => {
     expect(row).toMatchObject({
       direction: SyncDirection.TO_JIRA,
       status: SyncStatus.FAILED,
-      payload: { reason: 'jira error' },
+      payload: { errorCode: 'transition_rejected', retryable: false },
       errorMessage: expect.stringContaining('transition rejected'),
     });
     expect(jira.doTransitionCalls).toHaveLength(1);
@@ -329,7 +334,7 @@ describe('Jira status sync (e2e)', () => {
     expect(row).toMatchObject({
       direction: SyncDirection.TO_JIRA,
       status: SyncStatus.FAILED,
-      payload: { reason: 'jira error' },
+      payload: { errorCode: 'jira_error', retryable: true },
     });
   });
 });
