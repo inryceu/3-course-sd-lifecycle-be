@@ -14,6 +14,7 @@ import { JiraWebhookDeliveryService } from './application/jira-webhook-delivery.
 import { JiraWebhookLifecycleService } from './application/jira-webhook-lifecycle.service';
 import { JiraWebhookService } from './application/jira-webhook.service';
 import { TOKEN_CIPHER } from './application/token-cipher.port';
+import { JiraStatusSyncOutboxHandler } from './application/jira-status-sync-outbox.handler';
 import { AesGcmTokenCipher } from './infrastructure/aes-gcm-token-cipher';
 import { AtlassianOAuthHttpClient } from './infrastructure/atlassian-oauth.http-client';
 import {
@@ -55,6 +56,7 @@ import { BoardsModule } from '../boards';
     JiraStatusMappingService,
     JiraStatusSyncService,
     JiraStatusSyncListener,
+    JiraStatusSyncOutboxHandler,
     JiraWebhookAuthenticityService,
     JiraWebhookDeliveryService,
     JiraWebhookLifecycleService,
