@@ -22,12 +22,7 @@ export type OutboxOperation = 'TRANSITION_ISSUE';
  */
 export type OutboxStatus = 'PENDING' | 'IN_PROGRESS' | 'SENT' | 'DEAD';
 
-export const OUTBOX_STATUSES: readonly OutboxStatus[] = [
-  'PENDING',
-  'IN_PROGRESS',
-  'SENT',
-  'DEAD',
-];
+export const OUTBOX_STATUSES: readonly OutboxStatus[] = ['PENDING', 'IN_PROGRESS', 'SENT', 'DEAD'];
 
 /**
  * One queued outbound operation. `boardId`, `cardId` and `actorId` reference ids of other modules

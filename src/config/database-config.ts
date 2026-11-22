@@ -28,7 +28,10 @@ export const dataSourceOptions: PostgresConnectionOptions = {
   synchronize: false,
   logging: process.env['DATABASE_LOGGING'] === 'true',
   uuidExtension: 'pgcrypto',
-  entities: [resolve(__dirname, '../modules/*/infrastructure/**/*.entity{.ts,.js}')],
+  entities: [
+    resolve(__dirname, '../modules/*/infrastructure/**/*.entity{.ts,.js}'),
+    resolve(__dirname, '../common/**/infrastructure/**/*.entity{.ts,.js}'),
+  ],
   migrations: [resolve(__dirname, '../database/migrations/*{.ts,.js}')],
   migrationsTableName: 'migrations',
   migrationsTransactionMode: 'each',
