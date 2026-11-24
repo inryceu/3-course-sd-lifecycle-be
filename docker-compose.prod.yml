@@ -65,6 +65,12 @@ services:
       postgres:
         condition: service_healthy
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/v1/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -80,8 +86,8 @@ services:
         max-file: "3"
 
   # ---------------------------------------------------------------------------
-  # Nginx Reverse Proxy (Production) - Optional but recommended
-  # Handles SSL termination, rate limiting, static files
+  # Nginx Reverse Proxy (Production)
+  # Terminates TLS (>= 1.2), redirects HTTP to HTTPS, proxies REST + WebSocket.
   # ---------------------------------------------------------------------------
   nginx:
     image: nginx:alpine
@@ -96,13 +102,23 @@ services:
     networks:
       - boardsync_prod_network
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/health/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
 
 # -----------------------------------------------------------------------------
 # Networks - Completely isolated from development

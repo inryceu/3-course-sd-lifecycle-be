@@ -6,7 +6,16 @@ import { DATABASE_PROBE, DatabaseProbe } from './database-probe.port';
 export class HealthService {
   constructor(@Inject(DATABASE_PROBE) private readonly database: DatabaseProbe) {}
 
-  async check(): Promise<HealthStatus> {
+  alive(): HealthStatus {
+    return {
+      status: 'ok',
+      database: 'up',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    };
+  }
+
+  async ready(): Promise<HealthStatus> {
     const databaseUp = await this.database.isUp();
     return {
       status: databaseUp ? 'ok' : 'error',
