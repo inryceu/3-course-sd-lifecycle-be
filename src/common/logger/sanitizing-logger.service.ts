@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { ConsoleLogger, Injectable } from '@nestjs/common';
+=======
+import { Injectable, LoggerService } from '@nestjs/common';
+>>>>>>> 61f00ac (fixed e2e tests)
 
 const REDACTED = '[REDACTED]';
 
@@ -19,6 +23,7 @@ const SECRET_KEYS = [
   'secret',
 ];
 
+<<<<<<< HEAD
 // key, optional closing quote, `=` or `:`, then the value: a quoted string or everything up to , newline or }.
 const SECRET_PATTERN = new RegExp(
   String.raw`(["']?(?:${SECRET_KEYS.join('|')})["']?\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^,\n}]*)`,
@@ -67,5 +72,53 @@ export class SanitizingLoggerService extends ConsoleLogger {
 
   fatal(message: unknown, ...optionalParams: unknown[]): void {
     super.fatal(this.sanitize(message), ...optionalParams.map((p) => this.sanitize(p)));
+=======
+const SECRET_KEY_PATTERN = SECRET_KEYS.join('|');
+const SECRET_PATTERN = new RegExp(
+  `(${SECRET_KEY_PATTERN})[=:][^,\\n}]*`,
+  'gi',
+);
+
+@Injectable()
+export class SanitizingLoggerService implements LoggerService {
+  private sanitize(value: string | undefined): string | undefined {
+    if (value === undefined) return undefined;
+    return value.replace(SECRET_PATTERN, `$1=${REDACTED}`);
+  }
+
+  private format(message: string, context?: string): string {
+    const sanitizedMessage = this.sanitize(message) ?? '';
+    const sanitizedContext = this.sanitize(context);
+
+    return sanitizedContext
+      ? `[${sanitizedContext}] ${sanitizedMessage}`
+      : sanitizedMessage;
+  }
+
+  log(message: string, context?: string): void {
+    console.log(this.format(message, context));
+  }
+
+  error(message: string, trace?: string, context?: string): void {
+    const formattedMessage = this.format(message, context);
+    const sanitizedTrace = this.sanitize(trace);
+
+    console.error(
+      formattedMessage,
+      sanitizedTrace ?? '',
+    );
+  }
+
+  warn(message: string, context?: string): void {
+    console.warn(this.format(message, context));
+  }
+
+  debug(message: string, context?: string): void {
+    console.debug(this.format(message, context));
+  }
+
+  verbose(message: string, context?: string): void {
+    console.debug(this.format(message, context));
+>>>>>>> 61f00ac (fixed e2e tests)
   }
 }
