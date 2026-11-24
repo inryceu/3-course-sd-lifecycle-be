@@ -3,7 +3,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../../common/decorators/public.decorator';
 import { HealthService } from '../application/health.service';
-import { HealthStatus } from '../domain/health-status';
+import { HealthStatus, LivenessStatus } from '../domain/health-status';
 
 @ApiTags('health')
 @SkipThrottle()
@@ -28,7 +28,7 @@ export class HealthController {
   @Get('alive')
   @ApiOperation({ summary: 'Liveness probe (process only, no DB check)' })
   @ApiResponse({ status: 200, description: 'Service is alive' })
-  alive(): HealthStatus {
+  alive(): LivenessStatus {
     return this.health.alive();
   }
 

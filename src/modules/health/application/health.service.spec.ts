@@ -7,7 +7,7 @@ describe('HealthService', () => {
       const service = new HealthService({ isUp });
       const status = service.alive();
       expect(status.status).toBe('ok');
-      expect(status.database).toBe('up');
+      expect(status).not.toHaveProperty('database');
       expect(typeof status.uptime).toBe('number');
       expect(Number.isNaN(Date.parse(status.timestamp))).toBe(false);
       expect(isUp).not.toHaveBeenCalled();

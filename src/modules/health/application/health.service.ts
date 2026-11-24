@@ -1,15 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { HealthStatus } from '../domain/health-status';
+import { HealthStatus, LivenessStatus } from '../domain/health-status';
 import { DATABASE_PROBE, DatabaseProbe } from './database-probe.port';
 
 @Injectable()
 export class HealthService {
   constructor(@Inject(DATABASE_PROBE) private readonly database: DatabaseProbe) {}
 
-  alive(): HealthStatus {
+  alive(): LivenessStatus {
     return {
       status: 'ok',
-      database: 'up',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     };
