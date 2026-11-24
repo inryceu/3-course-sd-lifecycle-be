@@ -263,7 +263,8 @@ describe('Jira comment sync (e2e)', () => {
     const commentId = (response.body as CommentView).id;
 
     await waitForAddCommentCall(1);
-    deferred.reject(new JiraServerError(503, 3, 3));
+    jira.addCommentError = new JiraServerError(503, 3, 3);
+    deferred.reject(jira.addCommentError);
 
     const row = await waitForLog(card.id);
     expect(row).toMatchObject({
