@@ -20,7 +20,7 @@ fi
 
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout "$KEY" -out "$CERT" \
-  -subj "/CN=boardsync.local/O=BoardSync/C=US" \
+  -subj "/CN=boardsync.local/O=BoardSync/C=UA" \
   -addext "subjectAltName=DNS:boardsync.local,DNS:localhost,IP:127.0.0.1"
 
 chmod 600 "$KEY"

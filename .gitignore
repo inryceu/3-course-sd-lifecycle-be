@@ -45,3 +45,7 @@ coverage
 .cache
 tmp
 temp
+
+#tls
+ssl/
+secrets/
