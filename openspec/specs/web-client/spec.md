@@ -116,6 +116,34 @@ The board page SHALL show the board's members with their roles; the Admin SHALL 
 - **WHEN** the only Admin tries to demote themselves
 - **THEN** the role stays and the backend's message is shown
 
+#### Scenario: List
+- **WHEN** any member opens the board's members panel
+- **THEN** the list shows every member with their role
+
+#### Scenario: Viewer read-only
+- **WHEN** a Member or Viewer opens the board's members panel
+- **THEN** the list is shown without invite, role change or removal controls
+
+#### Scenario: Change role
+- **WHEN** the Admin picks a new role for a member
+- **THEN** the list shows that member with the new role
+
+#### Scenario: Remove
+- **WHEN** the Admin removes a member and confirms
+- **THEN** the member disappears from the list
+
+#### Scenario: Cancel removal
+- **WHEN** the Admin removes a member and cancels the confirmation
+- **THEN** the member stays in the list
+
+#### Scenario: Unknown e-mail
+- **WHEN** the Admin invites an e-mail that no registered user has
+- **THEN** the backend's message is shown and the members list does not change
+
+#### Scenario: Duplicate invite (409)
+- **WHEN** the Admin invites a user who is already a member
+- **THEN** the backend's message is shown
+
 ### Requirement: Assign a card in the web client
 The card dialog SHALL let Admins and Members choose the assignee among the board members or clear it; Viewers SHALL see the assignee read-only.
 
