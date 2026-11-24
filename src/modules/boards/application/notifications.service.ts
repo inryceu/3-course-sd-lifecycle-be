@@ -53,4 +53,55 @@ export class NotificationsService {
     }
     return toNotificationView(notification);
   }
+
+  /** One notification per Admin of the board. Returns the number created. */
+  async notifyAdmins(
+    boardId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<number> {
+    const admins = await this.memberships.find({
+      where: { boardId, role: BoardRole.ADMIN },
+      select: { userId: true },
+    });
+    return this.createFor([...new Set(admins.map((m) => m.userId))], boardId, type, payload);
+  }
+
+  /** Notifies one member; a user who is not (or no longer) a member gets nothing. */
+  async notifyUser(
+    userId: string,
+    boardId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<number> {
+    const member = await this.memberships.exist({ where: { boardId, userId } });
+    if (!member) return 0;
+    return this.createFor([userId], boardId, type, payload);
+  }
+
+  private async createFor(
+    recipientIds: string[],
+    boardId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<number> {
+    if (recipientIds.length === 0) return 0;
+    const saved = await this.notifications.save(
+      recipientIds.map((recipientId) =>
+        this.notifications.create({ recipientId, boardId, type, payload, readAt: null }),
+      ),
+    );
+    for (const notification of saved) {
+      await this.events.publish(
+        createEvent('notification.created', {
+          boardId,
+          payload: {
+            recipientId: notification.recipientId,
+            notification: toNotificationView(notification),
+          },
+        }),
+      );
+    }
+    return saved.length;
+  }
 }

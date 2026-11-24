@@ -61,11 +61,16 @@ export interface BoardsFacade {
     type: NotificationType,
     payload: Record<string, unknown>,
   ): Promise<number>;
-
+  /**
+   * Stores a notification for a specific user if they are a member of the board and publishes
+   * `notification.created`; returns 1 if created, 0 if the user is not a board member.
+   */
   notifyUser(
     userId: string,
     boardId: string,
     type: NotificationType,
     payload: Record<string, unknown>,
   ): Promise<number>;
+  /** Marks the comment as synced only when it belongs to the given card. */
+  markCommentSynced(cardId: string, commentId: string): Promise<void>;
 }

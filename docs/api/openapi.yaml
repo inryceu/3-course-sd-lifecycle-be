@@ -1916,7 +1916,7 @@ components:
           format: uuid
         type:
           type: string
-          enum: [deadline.reminder, jira.conflict, board.invited]
+          enum: [deadline.reminder, jira.conflict, board.invited, jira.sync.failed]
         payload:
           type: object
           additionalProperties: true

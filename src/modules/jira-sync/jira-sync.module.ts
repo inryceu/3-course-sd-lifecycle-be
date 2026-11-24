@@ -32,6 +32,9 @@ import { JiraImportController } from './presentation/jira-import.controller';
 import { JiraOAuthController } from './presentation/jira-oauth.controller';
 import { JiraWebhookController } from './presentation/jira-webhook.controller';
 import { BoardsModule } from '../boards';
+import { JiraOutboxAdminService } from './application/jira-outbox-admin.service';
+import { JiraOutboxDeadLetterListener } from './application/jira-outbox-dead-letter.listener';
+import { JiraOutboxController } from './presentation/jira-outbox.controller';
 
 @Module({
   imports: [
@@ -48,8 +51,16 @@ import { BoardsModule } from '../boards';
       SyncLogEntity,
     ]),
   ],
-  controllers: [JiraOAuthController, JiraImportController, JiraWebhookController],
+  controllers: [
+    JiraOutboxController,
+    JiraOAuthController,
+    JiraImportController,
+    JiraWebhookController,
+    JiraConflictsController,
+  ],
   providers: [
+    JiraOutboxAdminService,
+    JiraOutboxDeadLetterListener,
     JiraOAuthService,
     JiraConnectionService,
     JiraImportService,

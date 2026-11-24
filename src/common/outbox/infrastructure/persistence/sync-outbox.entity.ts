@@ -45,7 +45,7 @@ export const OUTBOX_STATUSES: readonly OutboxStatus[] = ['PENDING', 'IN_PROGRESS
 })
 @Index('IDX_sync_outbox_claim', ['status', 'availableAt', 'sequence'])
 @Index('IDX_sync_outbox_card_sequence', ['cardId', 'sequence'])
-@Index('IDX_sync_outbox_board_status_created', { synchronize: false })
+@Index('IDX_sync_outbox_board_status_created', ['boardId', 'status', 'createdAt', 'id'])
 export class SyncOutboxEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
