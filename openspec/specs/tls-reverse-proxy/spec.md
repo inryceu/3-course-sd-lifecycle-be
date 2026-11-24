@@ -43,35 +43,50 @@ The system SHALL proxy REST calls under `/api/v1/` and Socket.IO WebSocket upgra
 - **WHEN** a client initiates a WebSocket upgrade to `wss://host/socket.io/` with `Upgrade: websocket`
 - **THEN** the upgrade headers are forwarded to the backend and the socket is established
 
-#### Scenario: Forwarded scheme is https
-- **WHEN** a proxied request reaches the backend
-- **THEN** the backend sees `X-Forwarded-Proto: https` so callback and webhook URLs are generated as `https://`
+#### Scenario: Every proxied route forwards the client address and scheme
+- **WHEN** a request reaches the backend through any proxied route (REST, Socket.IO, fallback)
+- **THEN** the backend sees the client's address in `X-Forwarded-For` and `X-Real-IP`, `X-Forwarded-Proto: https`, and the original `Host`
+
+#### Scenario: A client cannot forge its forwarded address
+- **WHEN** a client sends its own `X-Forwarded-For` or `X-Forwarded-Proto` header
+- **THEN** the backend sees the real client address and `https`, so per-client rate limits cannot be evaded or shared by changing the header
+
+#### Scenario: Plain requests keep the upstream connection alive
+- **WHEN** a request carries no `Upgrade` header
+- **THEN** no `Connection: close` or `Upgrade` header is sent to the backend
 
 ### Requirement: Security headers at the edge
-The system SHALL set `Strict-Transport-Security` (HSTS) on all HTTPS responses from the reverse proxy; the backend SHALL continue to set its baseline Helmet headers (CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, X-XSS-Protection) on every response.
+The backend SHALL set its baseline Helmet headers (CSP, `Strict-Transport-Security`, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, X-XSS-Protection) on every response, and the reverse proxy SHALL NOT add a second copy of any of them.
 
-#### Scenario: HSTS present on HTTPS responses
-- **WHEN** a client receives a response over HTTPS from the reverse proxy
-- **THEN** the response includes `Strict-Transport-Security` with `max-age` and `includeSubDomains`
+#### Scenario: Exactly one HSTS header
+- **WHEN** a client receives a response over HTTPS from the backend through the reverse proxy
+- **THEN** the response includes exactly one `Strict-Transport-Security` header, with `max-age` and `includeSubDomains`
 
 #### Scenario: Baseline Helmet headers present
 - **WHEN** a client receives any HTTP response from the backend
 - **THEN** the response includes `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `X-XSS-Protection: 0`
 
 ### Requirement: Split health probes
-The system SHALL expose two health endpoints: liveness (process alive only) and readiness (database reachable, 503 when down). The compose healthcheck SHALL target readiness.
+The system SHALL expose two health endpoints: liveness (process alive only) and readiness (database reachable, 503 when down). The backend compose healthcheck SHALL target readiness and the nginx healthcheck liveness. Both endpoints SHALL be public, not rate limited, and documented in `docs/api/openapi.yaml`.
 
 #### Scenario: Liveness answers when process is up
 - **WHEN** the backend process is running
-- **THEN** `GET /api/v1/health/alive` returns a successful status without checking the database
+- **THEN** `GET /api/v1/health/alive` returns 200 with `status: ok` and no `database` field, without checking the database
 
 #### Scenario: Readiness answers 503 when database is down
 - **WHEN** the database is unreachable
 - **THEN** `GET /api/v1/health/ready` returns 503
 
-#### Scenario: Compose healthcheck targets readiness
-- **WHEN** compose evaluates the backend healthcheck
-- **THEN** it calls `GET /api/v1/health/ready` and marks the service healthy only when the database is up
+#### Scenario: Compose healthchecks
+- **WHEN** compose evaluates the healthchecks
+- **THEN** the backend calls `GET /api/v1/health/ready` and is healthy only when the database is up, and nginx calls `GET /api/v1/health/alive` and stays healthy while the database is down
+
+### Requirement: Migrations run before the backend serves
+The production profile SHALL apply pending database migrations before the backend starts listening, and the backend container SHALL exit non-zero when a migration fails.
+
+#### Scenario: Fresh volume
+- **WHEN** the stack starts on an empty database volume
+- **THEN** the schema is migrated before `/api/v1/health/ready` can answer, and registration and login work
 
 ### Requirement: Restart policies and resource limits
 The system SHALL run all production services with `restart: always` and `deploy.resources.limits`/`reservations`, including the reverse proxy.

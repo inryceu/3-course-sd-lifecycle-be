@@ -8,8 +8,8 @@ BoardSync's production compose file (`docker-compose.prod.yml`) reserves ports 8
 
 - New nginx configuration that terminates TLS (`TLSv1.2` and `TLSv1.3`), redirects HTTP (80) to HTTPS (443), and proxies REST (`/api/v1`) plus Socket.IO WebSocket upgrades (`/socket.io/`) to the backend.
 - Self-signed certificate generation for local verification; `./ssl` volume wired into compose.
-- Split health probes: `GET /health/alive` (liveness, process only) and `GET /health/ready` (readiness, DB probe, 503 when down); compose healthcheck targets readiness.
-- Security-header split: nginx owns HSTS + `X-Forwarded-Proto: https`; backend Helmet keeps the baseline CSP/X-XSS/etc.
+- Split health probes: `GET /api/v1/health/alive` (liveness, process only) and `GET /api/v1/health/ready` (readiness, DB probe, 503 when down), both documented in `docs/api/openapi.yaml`; the backend compose healthcheck targets readiness.
+- Security-header split: nginx owns the redirect and the forwarded-client headers; backend Helmet owns every security header, HSTS included (one header per response).
 - `restart: always` and `deploy.resources.limits` on all prod services (already present; kept and extended to nginx).
 - `.env.prod` gains HTTPS placeholders for `FRONTEND_URL`, `JIRA_REDIRECT_URI`, `JIRA_WEBHOOK_URL`.
 - Verification steps (`openssl s_client` protocol matrix, optional testssl) recorded in `docs/tls-verification.md`.
