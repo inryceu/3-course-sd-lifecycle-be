@@ -1,7 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { NotificationEntity } from '../infrastructure/persistence/notification.entity';
+import { createEvent, EVENT_PUBLISHER, EventPublisher } from '../../../common/events';
+import { BoardRole } from '../domain/board-role';
+import { BoardMembershipEntity } from '../infrastructure/persistence/board-membership.entity';
+import {
+  NotificationEntity,
+  NotificationType,
+} from '../infrastructure/persistence/notification.entity';
 import { NotificationPageView, NotificationView, toNotificationView } from './views';
 
 @Injectable()
@@ -9,6 +15,9 @@ export class NotificationsService {
   constructor(
     @InjectRepository(NotificationEntity)
     private readonly notifications: Repository<NotificationEntity>,
+    @InjectRepository(BoardMembershipEntity)
+    private readonly memberships: Repository<BoardMembershipEntity>,
+    @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
 
   /**

@@ -69,8 +69,4 @@ export class BoardsFacadeService implements BoardsFacade {
   ): Promise<number> {
     return this.notifications.notifyUser(userId, boardId, type, payload);
   }
-
-  markCommentSynced(cardId: string, commentId: string): Promise<void> {
-    return this.comments.markSynced(cardId, commentId);
-  }
 }

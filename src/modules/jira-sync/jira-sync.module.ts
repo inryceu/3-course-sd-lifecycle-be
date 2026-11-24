@@ -52,11 +52,10 @@ import { JiraOutboxController } from './presentation/jira-outbox.controller';
     ]),
   ],
   controllers: [
-    JiraOutboxController,
     JiraOAuthController,
     JiraImportController,
     JiraWebhookController,
-    JiraConflictsController,
+    JiraOutboxController,
   ],
   providers: [
     JiraOutboxAdminService,

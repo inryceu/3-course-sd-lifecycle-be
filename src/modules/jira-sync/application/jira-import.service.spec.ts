@@ -86,7 +86,6 @@ function setup(
     moveCardFromExternal: jest.fn(),
     notifyBoardAdmins: jest.fn(),
     notifyUser: jest.fn(),
-    markCommentSynced: jest.fn(),
   };
   const gateway = {
     listProjects: jest.fn().mockResolvedValue([
