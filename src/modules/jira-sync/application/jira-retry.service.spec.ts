@@ -10,6 +10,16 @@ import {
 } from '../domain/jira-gateway.errors';
 import { JiraRetryService } from './jira-retry.service';
 
+class TestJiraGatewayError extends JiraGatewayError {
+  constructor(
+    code: JiraGatewayError['code'],
+    message: string,
+    public readonly status: number | null,
+  ) {
+    super(code, message);
+  }
+}
+
 describe('JiraRetryService', () => {
   let service: JiraRetryService;
   let loggerWarnSpy: jest.SpyInstance;
@@ -94,10 +104,7 @@ describe('JiraRetryService', () => {
     });
 
     it('retries on network errors (JiraGatewayError with null status)', async () => {
-      const error = new JiraGatewayError('SERVER_ERROR', 'connection reset') as JiraGatewayError & {
-        status: null;
-      };
-      error.status = null;
+      const error = new TestJiraGatewayError('SERVER_ERROR', 'connection reset', null);
 
       const fn = jest.fn().mockRejectedValueOnce(error).mockResolvedValue('success');
 
@@ -339,18 +346,12 @@ describe('JiraRetryService', () => {
     });
 
     it('returns true for JiraGatewayError with null status', () => {
-      const error = new JiraGatewayError('SERVER_ERROR', 'network error') as JiraGatewayError & {
-        status: null;
-      };
-      error.status = null;
+      const error = new TestJiraGatewayError('SERVER_ERROR', 'network error', null);
       expect(service.isTransient(error)).toBe(true);
     });
 
     it('returns true for JiraGatewayError with status >= 500', () => {
-      const error = new JiraGatewayError('SERVER_ERROR', 'server error') as JiraGatewayError & {
-        status: 502;
-      };
-      error.status = 502;
+      const error = new TestJiraGatewayError('SERVER_ERROR', 'server error', 502);
       expect(service.isTransient(error)).toBe(true);
     });
 

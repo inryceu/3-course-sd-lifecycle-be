@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { JiraUnauthorizedError } from '../domain/jira-gateway.errors';
 import { JiraConnectionEntity } from '../infrastructure/persistence/jira-connection.entity';
-import { ATLASSIAN_OAUTH, AtlassianOAuth } from './atlassian-oauth.port';
+import { ATLASSIAN_OAUTH, AtlassianOAuth, AtlassianTokens } from './atlassian-oauth.port';
 import { TOKEN_CIPHER, TokenCipher } from './token-cipher.port';
 import { JiraTokenRefreshService } from './jira-token-refresh.service';
 
@@ -29,6 +29,8 @@ function setup() {
 
   const atlassian: jest.Mocked<AtlassianOAuth> = {
     refreshAccessToken: jest.fn(),
+    exchangeCode: jest.fn(),
+    listAccessibleResources: jest.fn(),
   };
 
   const service = new JiraTokenRefreshService(connRepo, atlassian, cipher);
@@ -191,13 +193,8 @@ describe('JiraTokenRefreshService', () => {
         connectedAt: NOW,
       } as JiraConnectionEntity);
 
-      let resolveRefresh: (value: {
-        accessToken: string;
-        refreshToken: string;
-        expiresIn: number;
-        scopes: string[];
-      }) => void;
-      const refreshPromise = new Promise((resolve) => {
+      let resolveRefresh: (value: AtlassianTokens) => void;
+      const refreshPromise = new Promise<AtlassianTokens>((resolve) => {
         resolveRefresh = resolve;
       });
       atlassian.refreshAccessToken.mockReturnValue(refreshPromise);
