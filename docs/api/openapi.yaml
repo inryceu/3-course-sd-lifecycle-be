@@ -53,6 +53,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/Health'
 
+  /health/alive:
+    get:
+      tags: [health]
+      operationId: getHealthAlive
+      summary: Liveness probe (the process only, the database is not checked)
+      security: []
+      responses:
+        '200':
+          description: The process is running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Liveness'
+
+  /health/ready:
+    get:
+      tags: [health]
+      operationId: getHealthReady
+      summary: Readiness probe (the database is reachable)
+      security: []
+      responses:
+        '200':
+          description: Service and database are up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Database is not reachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
   /auth/register:
     post:
       tags: [auth]
@@ -1488,6 +1522,19 @@ components:
         database:
           type: string
           enum: [up, down]
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: number
+
+    Liveness:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
         timestamp:
           type: string
           format: date-time

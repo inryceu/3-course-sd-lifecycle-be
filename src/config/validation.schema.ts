@@ -45,7 +45,10 @@ export const validationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'production', 'test').required(),
   PORT: Joi.number().port().min(1).default(3000),
   API_PREFIX: Joi.string().default('api/v1'),
-  FRONTEND_URL: Joi.string().uri().required(),
+  FRONTEND_URL: Joi.string()
+    .uri()
+    .required()
+    .when('NODE_ENV', { is: isProduction, then: Joi.string().uri({ scheme: ['https'] }) }),
   // Number of reverse proxies in front of the app (nginx = 1); makes req.ip the real client.
   TRUST_PROXY: Joi.number().integer().min(0).default(0),
   // Rate limits per client (T-36): global per minute, register/login per 5 minutes.
