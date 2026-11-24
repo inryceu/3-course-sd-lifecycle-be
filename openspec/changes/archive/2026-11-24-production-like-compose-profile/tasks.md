@@ -25,11 +25,11 @@
 
 ## 5. Verification and validation
 
-- [ ] 5.1 Bring up the prod stack with the self-signed cert; run `openssl s_client` matrix (TLS 1.0/1.1 refused, TLS 1.2/1.3 accepted) — verify handshake acceptance/refusal per protocol.
-- [ ] 5.2 Confirm HTTP→HTTPS 301/308, HSTS header on HTTPS responses, and `wss://` WebSocket upgrade reach the backend — verify responses.
-- [ ] 5.3 Optionally run `testssl.sh` against the stack — verify report produced if the tool is available.
-- [ ] 5.4 Record timestamped verification results in `docs/tls-verification.md` — verify the file exists with the results.
-- [ ] 5.5 Run `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test` — verify all pass.
+- [x] 5.1 Bring up the prod stack with the self-signed cert; run `openssl s_client` matrix (TLS 1.0/1.1 refused, TLS 1.2/1.3 accepted) — verify handshake acceptance/refusal per protocol.
+- [x] 5.2 Confirm HTTP→HTTPS 301/308, HSTS header on HTTPS responses, and `wss://` WebSocket upgrade reach the backend — verify responses.
+- [x] 5.3 Optionally run `testssl.sh` against the stack — verify report produced if the tool is available.
+- [x] 5.4 Record timestamped verification results in `docs/tls-verification.md` — verify the file exists with the results.
+- [x] 5.5 Run `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test` — verify all pass.
 
 ## Workflow follow-up
 
