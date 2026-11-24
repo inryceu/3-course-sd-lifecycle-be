@@ -17,6 +17,7 @@ import {
 } from '../infrastructure/persistence/sync-log.entity';
 import { plainTextToAdf } from './helpers/plain-text-to-adf';
 import { AddCommentInput, AddCommentResult, JiraGateway } from './jira-gateway.port';
+import { JiraRetryService } from './jira-retry.service';
 import { JiraCommentSyncService } from './jira-comment-sync.service';
 
 const CREATED: AddCommentResult = {
@@ -91,6 +92,9 @@ function setup(
   } else {
     gateway.addComment.mockResolvedValue(options.result ?? CREATED);
   }
+  const retry = {
+    execute: jest.fn().mockImplementation(async (fn: () => Promise<unknown>) => fn()),
+  } as unknown as jest.Mocked<JiraRetryService>;
   const author = options.author === undefined ? { displayName: 'Ada Lovelace' } : options.author;
   const auth = {
     getUserById: jest.fn(),
@@ -116,8 +120,9 @@ function setup(
     auth as unknown as AuthFacade,
     boards as unknown as BoardsFacade,
     logs as unknown as Repository<SyncLogEntity>,
+    retry,
   );
-  return { service, links, gateway, auth, boards, logs };
+  return { service, links, gateway, retry, auth, boards, logs };
 }
 
 const firstLog = (logs: { save: jest.Mock }): SavedLog => logs.save.mock.calls[0][0] as SavedLog;

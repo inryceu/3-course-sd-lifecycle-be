@@ -1314,6 +1314,76 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /jira/sync-logs:
+    get:
+      tags: [jira]
+      operationId: listJiraSyncLogs
+      summary: Sync logs of a board, newest first (Admin)
+      description: |
+        Returns paginated sync logs with optional status filter. Cursor-based pagination.
+      parameters:
+        - $ref: '#/components/parameters/BoardIdQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          description: Filter by sync status
+          schema:
+            type: string
+            enum: [SUCCESS, FAILED, CONFLICT]
+      responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '200':
+          description: A page of sync logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraSyncLogPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /jira/sync-logs/{logId}/retry:
+    post:
+      tags: [jira]
+      operationId: retryJiraSyncLog
+      summary: Retry a failed sync log (Admin)
+      description: |
+        Retries a failed outbound status move or comment sync. Only logs with status FAILED
+        and outcome !== unknown can be retried.
+      parameters:
+        - name: logId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The retry result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraSyncRetryResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The log cannot be retried (wrong status, missing data, or already retried)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /notifications:
     get:
       tags: [notifications]
@@ -1905,7 +1975,7 @@ components:
           format: uri
     JiraConnectionStatus:
       type: object
-      required: [connected, boardId]
+      required: [connected, boardId, requiresReconnect]
       description: Never contains tokens
       properties:
         connected:
@@ -1932,6 +2002,8 @@ components:
           type: string
           format: date-time
           nullable: true
+        requiresReconnect:
+          type: boolean
     JiraImportRequest:
       type: object
       required: [boardId]
@@ -2117,6 +2189,61 @@ components:
           items:
             $ref: '#/components/schemas/JiraConflict'
         nextCursor:
+          type: string
+          nullable: true
+
+    JiraSyncDirection:
+      type: string
+      enum: [TO_JIRA, FROM_JIRA]
+    JiraSyncStatus:
+      type: string
+      enum: [SUCCESS, FAILED, CONFLICT]
+    JiraSyncLog:
+      type: object
+      required: [id, boardId, direction, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        boardId:
+          type: string
+          format: uuid
+        direction:
+          $ref: '#/components/schemas/JiraSyncDirection'
+        status:
+          $ref: '#/components/schemas/JiraSyncStatus'
+        payload:
+          type: object
+          nullable: true
+          additionalProperties: true
+        errorMessage:
+          type: string
+          nullable: true
+        mappingId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    JiraSyncLogPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/JiraSyncLog'
+        nextCursor:
+          type: string
+          nullable: true
+    JiraSyncRetryResult:
+      type: object
+      required: [status, reason]
+      properties:
+        status:
+          $ref: '#/components/schemas/JiraSyncStatus'
+        reason:
           type: string
           nullable: true
 

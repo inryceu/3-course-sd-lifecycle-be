@@ -14,6 +14,7 @@ export interface JiraConnectionStatus {
   scopes: string[];
   expiresAt: string | null;
   connectedAt: string | null;
+  requiresReconnect: boolean;
 }
 
 @Injectable()
@@ -41,8 +42,12 @@ export class JiraConnectionService {
         scopes: [],
         expiresAt: null,
         connectedAt: null,
+        requiresReconnect: false,
       };
     }
+    const now = Date.now();
+    const expiresAt = connection.expiresAt.getTime();
+    const requiresReconnect = expiresAt < now - 5 * 60 * 1000;
     return {
       connected: true,
       boardId,
@@ -51,6 +56,7 @@ export class JiraConnectionService {
       scopes: connection.scopes,
       expiresAt: connection.expiresAt.toISOString(),
       connectedAt: connection.connectedAt.toISOString(),
+      requiresReconnect,
     };
   }
 

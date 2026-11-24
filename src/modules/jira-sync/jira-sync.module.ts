@@ -7,11 +7,13 @@ import { JiraCommentSyncListener } from './application/jira-comment-sync.listene
 import { JiraCommentSyncService } from './application/jira-comment-sync.service';
 import { JiraConnectionService } from './application/jira-connection.service';
 import { JiraImportService } from './application/jira-import.service';
+import { JiraRetryService } from './application/jira-retry.service';
 import { JiraStatusMappingService } from './application/jira-status-mapping.service';
 import { JiraStatusSyncListener } from './application/jira-status-sync.listener';
 import { JiraStatusSyncService } from './application/jira-status-sync.service';
-import { JiraSyncConflictDetector } from './application/jira-sync-conflict.detector';
 import { JiraSyncConflictsService } from './application/jira-sync-conflicts.service';
+import { JiraSyncConflictDetector } from './application/jira-sync-conflict.detector';
+import { JiraSyncLogsService } from './application/jira-sync-logs.service';
 import { JiraOAuthService } from './application/jira-oauth.service';
 import { JiraWebhookAuthenticityService } from './application/jira-webhook-authenticity.service';
 import { JiraWebhookDeliveryService } from './application/jira-webhook-delivery.service';
@@ -35,6 +37,7 @@ import { SyncLogEntity } from './infrastructure/persistence/sync-log.entity';
 import { JiraConflictsController } from './presentation/jira-conflicts.controller';
 import { JiraImportController } from './presentation/jira-import.controller';
 import { JiraOAuthController } from './presentation/jira-oauth.controller';
+import { JiraSyncLogsController } from './presentation/jira-sync-logs.controller';
 import { JiraWebhookController } from './presentation/jira-webhook.controller';
 import { BoardsModule } from '../boards';
 
@@ -59,6 +62,7 @@ import { BoardsModule } from '../boards';
     JiraImportController,
     JiraWebhookController,
     JiraConflictsController,
+    JiraSyncLogsController,
   ],
   providers: [
     JiraOAuthService,
@@ -75,6 +79,8 @@ import { BoardsModule } from '../boards';
     JiraWebhookDeliveryService,
     JiraWebhookLifecycleService,
     JiraWebhookService,
+    JiraRetryService,
+    JiraSyncLogsService,
     AesGcmTokenCipher,
     AtlassianOAuthHttpClient,
     JiraGatewayHttpClient,

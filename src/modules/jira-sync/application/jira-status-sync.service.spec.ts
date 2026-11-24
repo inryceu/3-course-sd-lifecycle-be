@@ -12,6 +12,7 @@ import {
   SyncStatus,
 } from '../infrastructure/persistence/sync-log.entity';
 import { JiraGateway, JiraStatus, JiraTransition } from './jira-gateway.port';
+import { JiraRetryService } from './jira-retry.service';
 import { JiraStatusMappingService } from './jira-status-mapping.service';
 import { JiraStatusSyncService } from './jira-status-sync.service';
 import { JiraSyncConflictDetector } from './jira-sync-conflict.detector';
@@ -105,6 +106,24 @@ function setup(
     listTransitions: jest.fn().mockResolvedValue({ transitions: [transition('31', DONE)] }),
     doTransition: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<JiraGateway>;
+  const retry = {
+    execute: async (fn: () => Promise<unknown>, _options?: unknown) => {
+      try {
+        return await fn();
+      } catch (error: unknown) {
+        const err = error as { code?: string };
+        if (err.code === 'TIMEOUT') {
+          // Simulate retry service wrapping timeout in SyncFailure
+          const SyncFailure = (await import('./jira-status-sync.service')).SyncFailure;
+          throw new SyncFailure('deadline exceeded', String(error), {
+            outcome: 'unknown',
+            transitionId: '31',
+          });
+        }
+        throw error;
+      }
+    },
+  } as unknown as jest.Mocked<JiraRetryService>;
   const statusRepo = {
     find: jest.fn().mockResolvedValue(options.stored ?? []),
   };
@@ -139,8 +158,9 @@ function setup(
     links as unknown as Repository<JiraIssueMappingEntity>,
     conflicts as unknown as JiraSyncConflictDetector,
     facade,
+    retry,
   );
-  return { service, facade, gateway, statusRepo, connections, links, logs, conflicts };
+  return { service, facade, gateway, retry, statusRepo, connections, links, logs, conflicts };
 }
 
 describe('JiraStatusSyncService', () => {
