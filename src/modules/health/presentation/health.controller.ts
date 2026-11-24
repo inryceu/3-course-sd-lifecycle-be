@@ -12,6 +12,19 @@ export class HealthController {
   constructor(private readonly health: HealthService) {}
 
   @Public()
+  @Get()
+  @ApiOperation({ summary: 'Liveness and database readiness' })
+  @ApiResponse({ status: 200, description: 'Service and database are up' })
+  @ApiResponse({ status: 503, description: 'Database is not reachable' })
+  async check(): Promise<HealthStatus> {
+    const status = await this.health.ready();
+    if (status.status !== 'ok') {
+      throw new HttpException(status, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    return status;
+  }
+
+  @Public()
   @Get('alive')
   @ApiOperation({ summary: 'Liveness probe (process only, no DB check)' })
   @ApiResponse({ status: 200, description: 'Service is alive' })
