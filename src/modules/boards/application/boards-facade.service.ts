@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { BoardRole } from '../domain/board-role';
 import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { BoardColumnEntity } from '../infrastructure/persistence/column.entity';
+import type { NotificationType } from '../infrastructure/persistence/notification.entity';
 import { BoardAccessService } from './board-access.service';
 import {
   BoardsFacade,
@@ -13,6 +14,7 @@ import {
   ExternalUpsertResult,
 } from './boards-facade.port';
 import { CardsService } from './cards.service';
+import { NotificationsService } from './notifications.service';
 
 @Injectable()
 export class BoardsFacadeService implements BoardsFacade {
@@ -21,6 +23,7 @@ export class BoardsFacadeService implements BoardsFacade {
     private readonly cards: CardsService,
     @InjectRepository(BoardEntity) private readonly boards: Repository<BoardEntity>,
     @InjectRepository(BoardColumnEntity) private readonly columns: Repository<BoardColumnEntity>,
+    private readonly notifications: NotificationsService,
   ) {}
 
   getMemberRole(boardId: string, userId: string): Promise<BoardRole | null> {
@@ -48,5 +51,22 @@ export class BoardsFacadeService implements BoardsFacade {
 
   moveCardFromExternal(input: ExternalCardMove): Promise<'moved' | 'unchanged' | 'not-found'> {
     return this.cards.moveFromExternal(input);
+  }
+
+  notifyBoardAdmins(
+    boardId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<number> {
+    return this.notifications.notifyAdmins(boardId, type, payload);
+  }
+
+  notifyUser(
+    userId: string,
+    boardId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<number> {
+    return this.notifications.notifyUser(userId, boardId, type, payload);
   }
 }

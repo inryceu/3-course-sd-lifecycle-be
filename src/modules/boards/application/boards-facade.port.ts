@@ -1,4 +1,5 @@
 import { BoardRole, ColumnType } from '../domain/board-role';
+import type { NotificationType } from '../infrastructure/persistence/notification.entity';
 
 /**
  * Port other modules (jira-sync) use to read and change boards without touching board tables.
@@ -54,4 +55,17 @@ export interface BoardsFacade {
    */
   upsertCardFromExternal(input: ExternalCardInput): Promise<ExternalUpsertResult>;
   moveCardFromExternal(input: ExternalCardMove): Promise<'moved' | 'unchanged' | 'not-found'>;
+
+  notifyBoardAdmins(
+    boardId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<number>;
+
+  notifyUser(
+    userId: string,
+    boardId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<number>;
 }
