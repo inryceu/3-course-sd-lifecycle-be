@@ -118,6 +118,11 @@ DO UPDATE SET
     WHEN sync_outbox.payload ->> $7::text IS DISTINCT FROM EXCLUDED.payload ->> $7::text THEN 0
     ELSE sync_outbox.attempts
   END,
+  -- a changed target is a new intent with a fresh retry budget (attempts and age)
+  created_at = CASE
+    WHEN sync_outbox.payload ->> $7::text IS DISTINCT FROM EXCLUDED.payload ->> $7::text THEN now()
+    ELSE sync_outbox.created_at
+  END,
   updated_at = now()
 RETURNING id, (xmax = 0) AS inserted`;
 
@@ -256,7 +261,9 @@ export class OutboxService {
   ): Promise<FailResult> {
     const nextAttempts = row.attempts + 1;
     const error = sanitizeErrorMessage(failure.error);
-    const exhausted = nextAttempts >= this.config.maxAttempts;
+    const exhausted =
+      nextAttempts >= this.config.maxAttempts ||
+      now.getTime() - row.createdAt.getTime() >= this.config.maxAgeMs;
 
     if (!failure.retryable || exhausted) {
       const code = failure.retryable ? OUTBOX_ERROR_CODES.attemptsExhausted : failure.errorCode;
@@ -394,7 +401,8 @@ export class OutboxService {
           `UPDATE sync_outbox
            SET status = 'PENDING', attempts = 0, payload = $2::jsonb, actor_id = $3::uuid,
                last_error = NULL, error_code = NULL, result = NULL, sent_at = NULL, dead_at = NULL,
-               locked_at = NULL, locked_by = NULL, available_at = $4::timestamptz, updated_at = now()
+               locked_at = NULL, locked_by = NULL, available_at = $4::timestamptz,
+               created_at = $4::timestamptz, updated_at = now()
            WHERE id = $1::uuid
            RETURNING *`,
           [row.id, JSON.stringify(payload), actorId, now],

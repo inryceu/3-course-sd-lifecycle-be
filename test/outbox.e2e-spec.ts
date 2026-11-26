@@ -171,7 +171,7 @@ describe('Outbox core (e2e)', () => {
 
   it('stale row with exhausted attempts becomes DEAD', async () => {
     const id = await insert(randomUUID(), 'TRANSITION_ISSUE', 'IN_PROGRESS', {
-      attempts: 19,
+      attempts: loadOutboxConfig({}).maxAttempts - 1,
       lockedAgoMs: 60_000,
     });
     const dead = await service.reclaimStale();
@@ -179,6 +179,19 @@ describe('Outbox core (e2e)', () => {
     const row = await get(id);
     expect(row.status).toBe('DEAD');
     expect(row.error_code).toBe('attempts_exhausted');
+  });
+
+  it('a row older than the retry window is dead-lettered on its next failure', async () => {
+    const id = await insert(randomUUID(), 'TRANSITION_ISSUE', 'IN_PROGRESS', {
+      lockedAgoMs: 60_000,
+    });
+    await ds.query(
+      `UPDATE sync_outbox SET created_at = now() - interval '25 hours' WHERE id = $1`,
+      [id],
+    );
+    const dead = await service.reclaimStale();
+    expect(dead).toHaveLength(1);
+    expect((await get(id)).error_code).toBe('attempts_exhausted');
   });
 
   it('requeue merges a later PENDING row into the dead row', async () => {

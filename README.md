@@ -171,6 +171,11 @@ Every variable is validated at startup (`src/config/validation.schema.ts`); the 
 | `JIRA_AUTH_BASE_URL`, `JIRA_API_BASE_URL` | no | Atlassian endpoints (override for tests; `https` in production) |
 | `TOKEN_ENCRYPTION_KEY` | yes | 64 hex characters (32 bytes) for AES-256-GCM |
 | `WEBHOOK_SECRET` | yes | at least 32 characters |
+| `OUTBOX_MAX_AGE_HOURS` | no (`24`) | a queued Jira move that keeps failing this long is dead-lettered (Admins notified; `POST /jira/sync/outbox/requeue-dead` re-queues them) |
+| `OUTBOX_BASE_DELAY_MS`, `OUTBOX_MAX_DELAY_MS` | no (`1000`, `45000`) | retry backoff: exponential with full jitter, floor and cap; the cap is also the longest wait after Jira is back, so it must stay below the 1-minute drain target (45 s + 5 s poll + attempt) |
+| `OUTBOX_MAX_ATTEMPTS` | no (`10000`) | safety cap on attempts per row (the age limit normally comes first) |
+| `OUTBOX_POLL_INTERVAL_SECONDS`, `OUTBOX_BATCH_SIZE`, `OUTBOX_CONCURRENCY` | no (`5`, `20`, `5`) | outbox worker poll period (`0` = off), rows claimed per round, parallel sends |
+| `OUTBOX_LOCK_STALE_MS`, `OUTBOX_SENT_RETENTION_DAYS` | no (`30000`, `7`) | a claim older than this is reclaimed; how long `SENT` rows are kept |
 
 ## API documentation and user guide
 
