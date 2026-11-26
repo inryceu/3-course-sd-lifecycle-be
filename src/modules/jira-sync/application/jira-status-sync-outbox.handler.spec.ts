@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { SyncOutboxEntity } from '../../../common/outbox/infrastructure/persistence/sync-outbox.entity';
 import { OutboxAttemptContext, OutboxHandlerResult } from '../../../common/outbox/outbox-handler';
 import { OutboxHandlerRegistry } from '../../../common/outbox/outbox-handler.registry';
@@ -32,6 +33,12 @@ describe('JiraStatusSyncOutboxHandler', () => {
   };
   const logs = { save: jest.fn() };
   const links = { findOne: jest.fn() };
+  const conflicts = {
+    noteBoardMove: jest.fn(),
+    overtakenBy: jest.fn(),
+    record: jest.fn(),
+  };
+  const boards = { moveCardFromExternal: jest.fn() };
   const registry = { register: jest.fn() } as unknown as OutboxHandlerRegistry;
 
   const handler = new JiraStatusSyncOutboxHandler(
@@ -40,6 +47,8 @@ describe('JiraStatusSyncOutboxHandler', () => {
     gateway as never,
     logs as never,
     links as never,
+    conflicts as never,
+    boards as never,
   );
 
   const row = (overrides: Record<string, unknown> = {}) =>
@@ -78,6 +87,10 @@ describe('JiraStatusSyncOutboxHandler', () => {
     gateway.listTransitions.mockResolvedValue({ transitions: [transition('31', DONE)] });
     gateway.doTransition.mockResolvedValue(undefined);
     links.findOne.mockResolvedValue(null);
+    conflicts.noteBoardMove.mockResolvedValue(null);
+    conflicts.overtakenBy.mockResolvedValue(null);
+    conflicts.record.mockResolvedValue(undefined);
+    boards.moveCardFromExternal.mockResolvedValue('moved');
     logs.save.mockResolvedValue(undefined);
   });
 
@@ -129,6 +142,111 @@ describe('JiraStatusSyncOutboxHandler', () => {
     );
     const result = failure(await handler.handle(row(), ctx()));
     expect(result).toMatchObject({ retryable: true, errorCode: 'deadline_exceeded' });
+    expect(logs.save).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ outcome: 'unknown' }) }),
+    );
+  });
+
+  it('dead-letters board_not_linked when the board lost its Jira link', async () => {
+    statusMappings.requireLinkedBoard.mockRejectedValue(new NotFoundException('no board'));
+    const result = failure(await handler.handle(row(), ctx()));
+    expect(result).toMatchObject({ retryable: false, errorCode: 'board_not_linked' });
+    expect(gateway.getIssue).not.toHaveBeenCalled();
+  });
+
+  it('retries an unexpected error while resolving the board', async () => {
+    statusMappings.requireLinkedBoard.mockRejectedValue(new Error('db down'));
+    const result = failure(await handler.handle(row(), ctx()));
+    expect(result).toMatchObject({ retryable: true, errorCode: 'jira_error' });
+  });
+
+  it('retries without calling Jira when the attempt has no time left', async () => {
+    const expired = { ...ctx(), deadline: Date.now() };
+    const result = failure(await handler.handle(row(), expired));
+    expect(result).toMatchObject({ retryable: true, errorCode: 'deadline_exceeded' });
+    expect(gateway.getIssue).not.toHaveBeenCalled();
+  });
+
+  it('prefers an explicit mapping, then the lowest status and transition id', async () => {
+    const REVIEW = status('7', 'Review');
+    gateway.listTransitions.mockResolvedValue({
+      transitions: [transition('32', REVIEW), transition('31', DONE), transition('30', DONE)],
+    });
+    statusMappings.resolveMappings.mockImplementation((_l: unknown, statuses: { id: string }[]) =>
+      Promise.resolve(
+        statuses.map((s) => ({
+          jiraStatusId: s.id,
+          columnId: s.id === '1' ? 'todo' : 'done',
+          isDefault: s.id === '7',
+        })),
+      ),
+    );
+    await handler.handle(row(), ctx());
+    expect(gateway.doTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ transitionId: '30' }),
+    );
+  });
+
+  it('still returns the result when the sync log cannot be written', async () => {
+    logs.save.mockRejectedValue(new Error('db down'));
+    await expect(handler.handle(row(), ctx())).resolves.toMatchObject({ status: 'SENT' });
+  });
+
+  describe('KAN-45 conflicts', () => {
+    const lost = {
+      linkId: 'l1',
+      boardId: 'b1',
+      cardId: 'c1',
+      issueKey: 'KAN-1',
+      board: { columnId: 'done', at: new Date('2026-11-26T10:00:00Z') },
+      jira: { columnId: 'doing', statusName: 'In Progress', at: new Date('2026-11-26T10:00:02Z') },
+    };
+
+    beforeEach(() => links.findOne.mockResolvedValue({ id: 'l1' }));
+
+    it('notes the move with its occurredAt before sending', async () => {
+      await handler.handle(row({ occurredAt: '2026-11-26T10:00:00.000Z' }), ctx());
+      expect(conflicts.noteBoardMove).toHaveBeenCalledWith(
+        { linkId: 'l1', boardId: 'b1', cardId: 'c1', issueKey: 'KAN-1' },
+        { columnId: 'done', at: new Date('2026-11-26T10:00:00.000Z') },
+      );
+      expect(gateway.doTransition).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops a move that lost to a Jira change seen at note time: Jira wins, no calls', async () => {
+      conflicts.noteBoardMove.mockResolvedValue(lost);
+      const result = await handler.handle(row(), ctx());
+      expect(result).toMatchObject({ status: 'SENT', result: { outcome: 'conflict' } });
+      expect(boards.moveCardFromExternal).toHaveBeenCalledWith({
+        boardId: 'b1',
+        jiraIssueKey: 'KAN-1',
+        columnId: 'doing',
+      });
+      expect(conflicts.record).toHaveBeenCalledWith(lost);
+      expect(gateway.getIssue).not.toHaveBeenCalled();
+      expect(gateway.doTransition).not.toHaveBeenCalled();
+      expect(logs.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'CONFLICT',
+          payload: expect.objectContaining({ outcome: 'conflict' }),
+        }),
+      );
+    });
+
+    it('drops a move overtaken by a Jira change right before doTransition', async () => {
+      conflicts.overtakenBy.mockResolvedValueOnce(null).mockResolvedValueOnce(lost);
+      const result = await handler.handle(row(), ctx());
+      expect(result).toMatchObject({ status: 'SENT', result: { outcome: 'conflict' } });
+      expect(gateway.doTransition).not.toHaveBeenCalled();
+      expect(conflicts.record).toHaveBeenCalledWith(lost);
+    });
+
+    it('skips detection for an issue without a mapping row', async () => {
+      links.findOne.mockResolvedValue(null);
+      await handler.handle(row(), ctx());
+      expect(conflicts.noteBoardMove).not.toHaveBeenCalled();
+      expect(gateway.doTransition).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('retries 5xx and 429, dead-letters 403 and 404', async () => {

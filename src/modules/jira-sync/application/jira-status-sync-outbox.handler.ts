@@ -16,6 +16,7 @@ import {
   OutboxHandlerResult,
 } from '../../../common/outbox/outbox-handler';
 import { OutboxHandlerRegistry } from '../../../common/outbox/outbox-handler.registry';
+import { BOARDS_FACADE, BoardsFacade } from '../../boards';
 import { JiraClientError, JiraTimeoutError } from '../domain/jira-gateway.errors';
 import { JiraIssueMappingEntity } from '../infrastructure/persistence/jira-issue-mapping.entity';
 import {
@@ -25,6 +26,7 @@ import {
 } from '../infrastructure/persistence/sync-log.entity';
 import { JIRA_GATEWAY, JiraGateway, JiraTransition } from './jira-gateway.port';
 import { JiraStatusMappingService, LinkedBoard } from './jira-status-mapping.service';
+import { DetectedConflict, JiraSyncConflictDetector } from './jira-sync-conflict.detector';
 
 const MIN_CALL_BUDGET_MS = 250;
 const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9_]{1,9}-\d+$/;
@@ -34,6 +36,8 @@ interface TransitionPayload {
   jiraIssueKey: string;
   fromColumnId: string;
   targetColumnId: string;
+  /** ISO time of the user's move (the outbox row is written in the move's transaction). */
+  occurredAt?: string;
 }
 
 /** A failure that must not be retried. */
@@ -46,11 +50,12 @@ class PermanentFailure extends Error {
   }
 }
 
-/** Retryable failure with a stable code. */
+/** Retryable failure with a stable code; `outcome: 'unknown'` when the POST was sent and aborted. */
 class TransientFailure extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly outcome?: 'unknown',
   ) {
     super(message);
   }
@@ -69,6 +74,8 @@ export class JiraStatusSyncOutboxHandler implements OutboxHandler, OnModuleInit 
     @InjectRepository(SyncLogEntity) private readonly logs: Repository<SyncLogEntity>,
     @InjectRepository(JiraIssueMappingEntity)
     private readonly links: Repository<JiraIssueMappingEntity>,
+    private readonly conflicts: JiraSyncConflictDetector,
+    @Inject(BOARDS_FACADE) private readonly boards: BoardsFacade,
   ) {}
 
   onModuleInit(): void {
@@ -79,16 +86,27 @@ export class JiraStatusSyncOutboxHandler implements OutboxHandler, OnModuleInit 
     const startedAt = Date.now();
     const p = row.payload as unknown as TransitionPayload;
     let result: OutboxHandlerResult;
+    let unknownOutcome = false;
     try {
       result = await this.run(row, ctx, p);
     } catch (error) {
       result = this.classify(error);
+      unknownOutcome = error instanceof TransientFailure && error.outcome === 'unknown';
+      if (unknownOutcome) {
+        this.logger.error(
+          `Jira transition for ${p?.jiraIssueKey} on board ${row.boardId}: outcome unknown, will re-read the status before retrying`,
+        );
+      }
     }
 
     const details: Record<string, unknown> =
       result.status === 'SENT'
         ? { ...(result.result ?? {}) }
-        : { errorCode: result.errorCode, retryable: result.retryable };
+        : {
+            errorCode: result.errorCode,
+            retryable: result.retryable,
+            ...(unknownOutcome ? { outcome: 'unknown' } : {}),
+          };
     try {
       const link = await this.links.findOne({
         where: { boardId: row.boardId, jiraIssueKey: p.jiraIssueKey },
@@ -96,7 +114,7 @@ export class JiraStatusSyncOutboxHandler implements OutboxHandler, OnModuleInit 
       });
       await this.logs.save({
         direction: SyncDirection.TO_JIRA,
-        status: result.status === 'SENT' ? SyncStatus.SUCCESS : SyncStatus.FAILED,
+        status: this.logStatus(result),
         payload: {
           outboxId: row.id,
           attempt: ctx.attempt,
@@ -126,6 +144,27 @@ export class JiraStatusSyncOutboxHandler implements OutboxHandler, OnModuleInit 
     }
     const boardId = row.boardId;
     const linked = await this.resolveLinkedBoard(boardId);
+    const link = await this.links.findOne({
+      where: { boardId, jiraIssueKey: p.jiraIssueKey },
+      select: { id: true },
+    });
+    const ref = link && {
+      linkId: link.id,
+      boardId,
+      cardId: p.cardId,
+      issueKey: p.jiraIssueKey,
+    };
+    const move = {
+      columnId: p.targetColumnId,
+      at: new Date(p.occurredAt ?? row.createdAt ?? Date.now()),
+    };
+    // KAN-45: record the move for the inbound side, then let a Jira change that overtook it win.
+    if (ref) {
+      const lost =
+        (await this.conflicts.noteBoardMove(ref, move)) ??
+        (await this.conflicts.overtakenBy(ref, move));
+      if (lost) return this.jiraWins(lost);
+    }
 
     const issue = await this.gateway.getIssue({
       boardId,
@@ -160,6 +199,9 @@ export class JiraStatusSyncOutboxHandler implements OutboxHandler, OnModuleInit 
     }
 
     const chosen = candidates[0].transition;
+    // A Jira change may have landed while this move waited in the queue or the attempt ran.
+    const overtaken = ref && (await this.conflicts.overtakenBy(ref, move));
+    if (overtaken) return this.jiraWins(overtaken);
     try {
       await this.gateway.doTransition({
         boardId,
@@ -170,7 +212,7 @@ export class JiraStatusSyncOutboxHandler implements OutboxHandler, OnModuleInit 
     } catch (error) {
       if (error instanceof JiraTimeoutError) {
         // Outcome unknown: the next attempt re-reads the status and no-ops if it landed.
-        throw new TransientFailure('deadline_exceeded', error.message);
+        throw new TransientFailure('deadline_exceeded', error.message, 'unknown');
       }
       if (error instanceof JiraClientError && (error.status === 400 || error.status === 409)) {
         const reread = await this.gateway.getIssue({
@@ -194,6 +236,29 @@ export class JiraStatusSyncOutboxHandler implements OutboxHandler, OnModuleInit 
         targetStatusName: chosen.to.name,
       },
     };
+  }
+
+  /** Jira wins: the move is dropped, the card goes back to Jira's column, the conflict is logged. */
+  private async jiraWins(lost: DetectedConflict): Promise<OutboxHandlerResult> {
+    await this.boards.moveCardFromExternal({
+      boardId: lost.boardId,
+      jiraIssueKey: lost.issueKey,
+      columnId: lost.jira.columnId,
+    });
+    await this.conflicts.record(lost);
+    return {
+      status: 'SENT',
+      result: {
+        outcome: 'conflict',
+        jiraColumnId: lost.jira.columnId,
+        jiraStatusName: lost.jira.statusName,
+      },
+    };
+  }
+
+  private logStatus(result: OutboxHandlerResult): SyncStatus {
+    if (result.status === 'FAILED') return SyncStatus.FAILED;
+    return result.result?.outcome === 'conflict' ? SyncStatus.CONFLICT : SyncStatus.SUCCESS;
   }
 
   private async resolveLinkedBoard(boardId: string): Promise<LinkedBoard> {

@@ -4,6 +4,7 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
+import { OUTBOX_CONFIG, loadOutboxConfig } from '../src/common/outbox/outbox.config';
 import { BOARDS_FACADE, BoardsFacade } from '../src/modules/boards';
 import { BoardEntity } from '../src/modules/boards/infrastructure/persistence/board.entity';
 import { CardEntity } from '../src/modules/boards/infrastructure/persistence/card.entity';
@@ -127,8 +128,6 @@ interface LinkedCard {
   mappingId: string;
 }
 
-process.env['OUTBOX_POLL_INTERVAL_SECONDS'] = '1';
-
 describe('Jira status sync (e2e)', () => {
   let app: INestApplication;
   let server: ReturnType<INestApplication['getHttpServer']>;
@@ -196,6 +195,8 @@ describe('Jira status sync (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(JIRA_GATEWAY)
       .useValue(jira)
+      .overrideProvider(OUTBOX_CONFIG)
+      .useValue({ ...loadOutboxConfig(), pollIntervalSeconds: 1 })
       .compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
