@@ -29,10 +29,7 @@ export class NotificationsService {
     type: NotificationType,
     payload: Record<string, unknown>,
   ): Promise<number> {
-    const admins = await this.memberships.find({
-      where: { boardId, role: BoardRole.ADMIN },
-      select: { userId: true },
-    });
+    const admins = await this.memberships.find({ where: { boardId, role: BoardRole.ADMIN } });
     return this.createFor([...new Set(admins.map((m) => m.userId))], boardId, type, payload);
   }
 
