@@ -13,7 +13,7 @@ The repository SHALL contain `docs/api/openapi.yaml` describing every REST area 
 
 #### Scenario: Outbox operations are present
 - **WHEN** a reader opens the `jira` tag
-- **THEN** the outbox list and single requeue operations are documented
+- **THEN** the outbox list, single requeue and bulk requeue operations are documented
 
 ## ADDED Requirements
 
@@ -105,3 +105,12 @@ All outbox operations SHALL document 401 for an unauthenticated caller, 403 for 
 
 - **WHEN** a client receives a `jira.sync.failed` notification
 - **THEN** the documented fields identify the board, card, issue, operation, attempt count and stable error code
+
+### Requirement: Jira sync outbox bulk requeue operation
+
+`docs/api/openapi.yaml` SHALL describe `POST /jira/sync/outbox/requeue-dead` as a board-Admin operation with a required `boardId` query parameter, returning `OutboxRequeueSummary` (`requeued`, `skipped`), with 400, 401, 403 and 404.
+
+#### Scenario: Bulk requeue is documented
+
+- **WHEN** a reader opens `POST /jira/sync/outbox/requeue-dead`
+- **THEN** the required `boardId`, the `OutboxRequeueSummary` response and 400/401/403/404 are documented

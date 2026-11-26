@@ -98,7 +98,7 @@ The system SHALL execute at most one Jira workflow transition per handler attemp
 
 ### Requirement: Record every outbound attempt in the sync log
 
-The system SHALL write exactly one `TO_JIRA` sync-log row per `TRANSITION_ISSUE` handler attempt, including a no-op: `SUCCESS` for a transition or no-op, `FAILED` otherwise. The payload SHALL include `outboxId`, `attempt`, card id, issue key, source and destination columns, outcome or reason, the chosen status and transition when known, `retryable`, `errorCode` and `latencyMs`; failure rows SHALL include a sanitized `errorMessage`. `mappingId` SHALL be set when a card-issue mapping exists, otherwise null. Moves that coalesce without a handler attempt SHALL NOT write a sync-log row.
+The system SHALL write exactly one `TO_JIRA` sync-log row per `TRANSITION_ISSUE` handler attempt, including a no-op: `SUCCESS` for a transition or no-op, `CONFLICT` when the move lost a sync conflict and no transition was sent, `FAILED` otherwise. The payload SHALL include `outboxId`, `attempt`, card id, issue key, source and destination columns, outcome or reason, the chosen status and transition when known, `retryable`, `errorCode` and `latencyMs`; failure rows SHALL include a sanitized `errorMessage`. `mappingId` SHALL be set when a card-issue mapping exists, otherwise null. Moves that coalesce without a handler attempt SHALL NOT write a sync-log row.
 
 #### Scenario: Successful transition is logged
 
@@ -109,6 +109,11 @@ The system SHALL write exactly one `TO_JIRA` sync-log row per `TRANSITION_ISSUE`
 
 - **WHEN** the issue already maps to the destination column
 - **THEN** one `TO_JIRA`/`SUCCESS` row records outcome `no-op`, the outbox id and the attempt
+
+#### Scenario: Conflict is logged
+
+- **WHEN** the move lost a sync conflict
+- **THEN** one `TO_JIRA`/`CONFLICT` row records outcome `conflict` and no transition is sent
 
 #### Scenario: Failure is logged
 
@@ -228,7 +233,7 @@ For a dead-lettered `TRANSITION_ISSUE` row, the failure SHALL be surfaced by the
 
 ### Requirement: Report a timed-out transition as an unknown outcome
 
-When the transition request was sent and then timed out, the system SHALL record reason `deadline exceeded` with `payload.outcome` `unknown` and SHALL log that the outcome is unknown, because Jira may have applied the transition. The row SHALL be retried within the attempts budget; when the budget is exhausted it SHALL become `DEAD`.
+When the transition request was sent and then timed out, the system SHALL record reason `deadline exceeded` with `payload.outcome` `unknown` and SHALL log that the outcome is unknown, because Jira may have applied the transition. The row SHALL be retried within the retry window; when the window or the attempts cap is exhausted it SHALL become `DEAD`. The retry SHALL NOT send the transition again before it re-reads the issue status.
 
 #### Scenario: Transition request times out
 
@@ -240,9 +245,14 @@ When the transition request was sent and then timed out, the system SHALL record
 - **WHEN** the timed-out row is still under the attempt limit
 - **THEN** the next attempt re-reads the issue status before any new transition
 
-#### Scenario: Timed-out row exhausts attempts
+#### Scenario: Timed-out transition that landed is not sent twice
 
-- **WHEN** the row reaches 20 retryable failures
+- **WHEN** a timed-out `doTransition` was applied by Jira and the next attempt reads the issue
+- **THEN** the issue already maps to the destination, the row is `SENT` with outcome `no-op` and no second transition is sent
+
+#### Scenario: Timed-out row exhausts the retry window
+
+- **WHEN** the row keeps failing until the retry window has passed
 - **THEN** it becomes `DEAD` with `attempts_exhausted`
 
 ## ADDED Requirements
@@ -367,7 +377,7 @@ The system SHALL claim only the lowest-sequence `PENDING` head for a card among 
 
 ### Requirement: Retry transient failures within a bounded backoff
 
-The system SHALL retry network errors, timeouts, Jira 5xx, 429 and time-budget exhaustion with capped full-jitter exponential backoff: a 1000 ms base, a 30000 ms cap and at most 20 retryable failures. It SHALL increment `attempts` only when a failure or stale lock returns a row to `PENDING`, not when claiming. It SHALL dead-letter 401 after refresh, 403, 404, invalid keys, unlinked boards and a destination with no direct transition without retrying.
+The system SHALL retry network errors, timeouts, Jira 5xx, 429 and time-budget exhaustion with capped full-jitter exponential backoff: a 1000 ms base (`OUTBOX_BASE_DELAY_MS`), a 45000 ms cap (`OUTBOX_MAX_DELAY_MS`), a retry window of 24 hours from the time the row was queued (`OUTBOX_MAX_AGE_HOURS`) and a safety cap of 10000 retryable failures (`OUTBOX_MAX_ATTEMPTS`). The cap keeps a recovered Jira drained within the one-minute target, the window lets the queue survive a multi-hour outage. It SHALL increment `attempts` only when a failure or stale lock returns a row to `PENDING`, not when claiming. It SHALL dead-letter 401 after refresh, 403, 404, invalid keys, unlinked boards and a destination with no direct transition without retrying.
 
 #### Scenario: Jira 5xx is retried
 
@@ -381,8 +391,8 @@ The system SHALL retry network errors, timeouts, Jira 5xx, 429 and time-budget e
 
 #### Scenario: Backoff respects the cap
 
-- **WHEN** the computed exponential delay exceeds 30000 ms or a jitter value exceeds it
-- **THEN** the stored delay is at most 30000 ms
+- **WHEN** the computed exponential delay exceeds 45000 ms or a jitter value exceeds it
+- **THEN** the stored delay is at most 45000 ms
 
 #### Scenario: 400 or 409 is re-read
 
@@ -392,17 +402,27 @@ The system SHALL retry network errors, timeouts, Jira 5xx, 429 and time-budget e
 #### Scenario: A 429 is retried as transient
 
 - **WHEN** Jira answers 429
-- **THEN** `attempts` increases and the row is retried after a delay within the 30000 ms cap
+- **THEN** `attempts` increases and the row is retried after a delay within the 45000 ms cap
 
 #### Scenario: Retry-After is honoured
 
-- **WHEN** Jira answers 429 with a `Retry-After` of 45 seconds
-- **THEN** the row's delay is clamped to 30 seconds
+- **WHEN** Jira answers 429 with a `Retry-After` of 120 seconds
+- **THEN** the row's delay is clamped to 45 seconds
 
-#### Scenario: The twentieth failure dead-letters
+#### Scenario: A Jira outage of several hours does not lose the move
 
-- **WHEN** a row receives its twentieth retryable failure
+- **WHEN** Jira is unreachable for three hours after a move was queued
+- **THEN** the row is still `PENDING` and is sent once Jira is back
+
+#### Scenario: A row failing past the retry window dead-letters
+
+- **WHEN** a retryable failure is recorded for a row queued 24 hours or more ago
 - **THEN** it becomes `DEAD` with `attempts_exhausted`
+
+#### Scenario: A requeued row gets a fresh window
+
+- **WHEN** an Admin requeues a dead row, or a move with a new destination coalesces into a pending row
+- **THEN** the row's attempts and retry window start again
 
 ### Requirement: Recover stale in-progress rows within the recovery target
 
@@ -420,7 +440,7 @@ The system SHALL reclaim an `IN_PROGRESS` row whose `locked_at` is older than 30
 
 #### Scenario: A stale row exhausts its attempts
 
-- **WHEN** reclaiming would make the attempt count 20
+- **WHEN** reclaiming would make the attempt count reach the attempts cap or the row is past its retry window
 - **THEN** the row becomes `DEAD` with `attempts_exhausted`
 
 #### Scenario: Recovery stays under 60 seconds
@@ -430,16 +450,16 @@ The system SHALL reclaim an `IN_PROGRESS` row whose `locked_at` is older than 30
 
 ### Requirement: Dead-letter exhausted outbound work
 
-The system SHALL mark a row `DEAD` after a permanent failure, 20 retryable failures, or exhausted stale recovery, with a stable error code. A `DEAD` row SHALL block later rows for the same card and SHALL not be processed until an Admin requeues it. Notification failure SHALL NOT change the row.
+The system SHALL mark a row `DEAD` after a permanent failure, a retryable failure past the 24-hour retry window (or the attempts cap), or exhausted stale recovery, with a stable error code. A `DEAD` row SHALL block later rows for the same card and SHALL not be processed until an Admin requeues it. Notification failure SHALL NOT change the row.
 
 #### Scenario: Permanent failure dead-letters
 
 - **WHEN** the handler cannot find a direct transition to the destination column
 - **THEN** the row is `DEAD` with `no_transition_path`
 
-#### Scenario: Attempt exhaustion dead-letters
+#### Scenario: Retry window exhaustion dead-letters
 
-- **WHEN** the twentieth retryable failure is recorded
+- **WHEN** a retryable failure is recorded for a row older than the retry window
 - **THEN** the row is `DEAD` with `attempts_exhausted`
 
 #### Scenario: Dead letter blocks successors
@@ -585,3 +605,46 @@ The system SHALL store a stable error code and a sanitized message in `last_erro
 
 - **WHEN** a board Admin lists dead rows
 - **THEN** no token, secret or raw provider body appears in any field
+
+### Requirement: Let Jira win over a queued move it overtook
+
+Before it sends a `TRANSITION_ISSUE`, the handler SHALL record the move for conflict detection (`noteBoardMove`, with the move's `occurredAt`) and, again right before it calls Jira, SHALL check whether a Jira status change of the issue to another column overtook the move: one at most five seconds before the move, or any later one. A move that lost SHALL NOT be sent: the card goes to the column of Jira's status, a `sync_conflict_log` row with resolution `jira` is stored once (the webhook and the retry see the same conflict), the Admins get a `jira.conflict` notification, one `TO_JIRA`/`CONFLICT` sync-log row is written and the outbox row finishes `SENT` with outcome `conflict`. A conflict that an Admin resolves with `boardsync` still overrides Jira through the direct status sync.
+
+#### Scenario: Jira changed the issue while the move was queued
+
+- **WHEN** Jira is unreachable, a user moves a linked card, someone sets the issue to another status in Jira, and Jira becomes reachable again
+- **THEN** no transition is sent, one conflict is logged with a `jira.conflict` notification, the card shows Jira's column and the outbox row is `SENT` with outcome `conflict`
+
+#### Scenario: A much later Jira change still wins
+
+- **WHEN** a Jira change to another column was recorded hours after the queued move
+- **THEN** the move is dropped as a conflict
+
+#### Scenario: Nothing changed in Jira meanwhile
+
+- **WHEN** Jira has no newer status change of the issue
+- **THEN** the move is sent as usual
+
+#### Scenario: Conflict seen twice is logged once
+
+- **WHEN** the inbound webhook already logged the conflict and the queued move is then dropped for the same move time
+- **THEN** no second conflict row and no second notification are created
+
+### Requirement: Requeue all dead rows of a board
+
+The system SHALL provide `POST /jira/sync/outbox/requeue-dead?boardId=` restricted to board Admins. It SHALL requeue the board's `DEAD` rows oldest first, at most 500 per call, with the same rules as the single requeue, and answer `{ requeued, skipped }`, where `skipped` counts rows that an earlier row of the same card still blocks. It SHALL answer 400 for a missing board id, 403 for a non-Admin and 404 for an unknown or inaccessible board.
+
+#### Scenario: Admin requeues after an outage
+
+- **WHEN** an Admin calls the bulk requeue for a board with three dead rows of different cards
+- **THEN** the response is `{ requeued: 3, skipped: 0 }` and the rows are `PENDING`
+
+#### Scenario: A blocked row is skipped
+
+- **WHEN** a card has two dead rows
+- **THEN** the older one is requeued and the newer one is counted in `skipped`
+
+#### Scenario: Non-admin bulk requeue is forbidden
+
+- **WHEN** a board Member calls the bulk requeue
+- **THEN** the response is 403

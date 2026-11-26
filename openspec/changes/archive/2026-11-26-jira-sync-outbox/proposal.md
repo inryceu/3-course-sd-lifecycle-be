@@ -26,12 +26,15 @@ original event, so a delayed retry would have no budget left.
   `PENDING` re-check, so two workers cannot process one card out of order. `IN_PROGRESS`, `SENT` and
   `DEAD` rows are never coalesced.
 - **Retry and rate limiting.** Transient network, timeout, 5xx and 429 failures use capped full-jitter
-  exponential backoff: 1s base, 30s cap, 20 attempts. A 429 honours `Retry-After` clamped to the 30s
-  cap and consumes an attempt, so `MAX_ATTEMPTS=20` covers it. Permanent failures (401 after refresh,
+  exponential backoff: 1s base, 45s cap, dead-lettered once a row has kept failing for 24 hours
+  (`OUTBOX_MAX_AGE_HOURS`; `OUTBOX_MAX_ATTEMPTS=10000` is only a safety cap). The cap is bounded by the
+  one-minute drain target, the 24 hours are what lets a multi-hour Jira outage survive. A 429 honours
+  `Retry-After` clamped to the 45s cap and consumes an attempt. Permanent failures (401 after refresh,
   403, 404, no transition path) dead-letter immediately. A 400 or 409 from the transition POST
   re-reads the issue status to tell a race from a rejection.
-- **Dead-letter and Admin surface.** After 20 retry attempts a row is `DEAD` and blocks later rows
-  for the same card. Board Admins can list outbox rows and requeue one row. A dead-lettered
+- **Dead-letter and Admin surface.** After the 24-hour retry window a row is `DEAD` and blocks later rows
+  for the same card. Board Admins can list outbox rows, requeue one row and requeue every dead row of a
+  board (`POST /jira/sync/outbox/requeue-dead`). A dead-lettered
   transition notifies all board Admins and the mover, deduplicated, with type `jira.sync.failed`.
 - **Timing and stale recovery.** The 5s budget starts at each attempt, not at event time. Stale
   `IN_PROGRESS` rows are reclaimed after 30s on every poll. With the defaults and the documented
@@ -76,10 +79,12 @@ None.
   `src/config/database-config.ts` so the CLI discovers the common outbox entity, and add
   `sync_outbox` to `test/migrations.e2e-spec.ts`.
 - Configuration: `OUTBOX_POLL_INTERVAL_SECONDS=5`, `OUTBOX_BATCH_SIZE=20`, `OUTBOX_CONCURRENCY=5`,
-  `OUTBOX_MAX_ATTEMPTS=20`, `OUTBOX_BASE_DELAY_MS=1000`, `OUTBOX_MAX_DELAY_MS=30000`,
+  `OUTBOX_MAX_ATTEMPTS=10000`, `OUTBOX_MAX_AGE_HOURS=24`, `OUTBOX_BASE_DELAY_MS=1000`,
+  `OUTBOX_MAX_DELAY_MS=45000`,
   `OUTBOX_LOCK_STALE_MS=30000`, `OUTBOX_SENT_RETENTION_DAYS=7`. `test/setup-env.ts` sets the poll
   interval to 0.
-- API and OpenAPI: `GET /jira/sync/outbox`, `POST /jira/sync/outbox/{outboxId}/requeue`;
+- API and OpenAPI: `GET /jira/sync/outbox`, `POST /jira/sync/outbox/{outboxId}/requeue`,
+  `POST /jira/sync/outbox/requeue-dead?boardId=`;
   403/404/409 semantics; `jira.sync.failed`.
 - Tests: unit, DB/e2e and component outage/throughput tests (at least 100 rows, 60s simulated
   recovery).
@@ -88,3 +93,7 @@ None.
 - Dependencies: none. No tokens or secrets in `last_error`, logs or Admin responses.
 - Risk: KAN-45 also changes `JiraStatusSyncService`, notifications and migrations. Coordinate the
   merge order.
+- KAN-45 conflicts: the outbox handler runs the same conflict detection as the former direct sync, so
+  a queued move that a Jira change overtook while Jira was unreachable is dropped (Jira wins), logged
+  as a conflict and notified. Comment mirroring (KAN-44) stays a direct call; routing it through the
+  outbox needs a duplicate-safe marker and is a follow-up.

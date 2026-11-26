@@ -176,8 +176,8 @@ The worker classifies failures:
 | Unknown operation / handler missing | No retry | `DEAD` with `handler_missing` |
 
 `attempts` is not incremented at claim time. It is incremented only when a failure (or an
-expired stale lock) sends the row back to `PENDING`. This is what makes "20 attempts" mean 20
-retryable failures, not 20 claims. The gateway's own bounded HTTP retries (for 5xx, timeouts and
+expired stale lock) sends the row back to `PENDING`. This is what makes the attempt count mean
+retryable failures, not claims. The gateway's own bounded HTTP retries (for 5xx, timeouts and
 network errors) happen inside one handler attempt and inside the same five-second budget; the
 outbox `attempts` count is not the HTTP attempt count.
 
@@ -188,15 +188,16 @@ cap_n = min(OUTBOX_MAX_DELAY_MS, OUTBOX_BASE_DELAY_MS * 2^(n-1))
 delay = random_between(OUTBOX_BASE_DELAY_MS, max(OUTBOX_BASE_DELAY_MS, cap_n))
 ```
 
-The jitter result never exceeds the 30s cap. A 429 uses
+The jitter result never exceeds the 45s cap (`OUTBOX_MAX_DELAY_MS`). A 429 uses
 `clamp(Retry-After, OUTBOX_BASE_DELAY_MS, OUTBOX_MAX_DELAY_MS)`; without the header, the same
 exponential formula applies. A 429 consumes one attempt like any other transient failure, so
-`OUTBOX_MAX_ATTEMPTS = 20` bounds it; there is no separate throttle counter or throttle cap.
+the retry window bounds it; there is no separate throttle counter or throttle cap.
 
 ### 7. Dead-letter, blocking and notifications
 
-A row that receives a permanent failure, exhausts 20 attempts, or exhausts
-attempts during stale reclaim becomes `DEAD` with a stable `error_code` and a sanitized `last_error`
+A row that receives a permanent failure, fails while older than `OUTBOX_MAX_AGE_HOURS` (24 h, from
+`created_at`; `OUTBOX_MAX_ATTEMPTS` is a safety cap), or exhausts that budget during stale reclaim
+becomes `DEAD` with a stable `error_code` and a sanitized `last_error`
 (for example `no_transition_path`, `jira_unauthorized`, `jira_forbidden`, `jira_not_found`,
 `attempts_exhausted`, `handler_missing`). `DEAD` is a head-of-line state,
 so later rows for that card are not processed until an Admin requeues the dead row.
@@ -227,7 +228,7 @@ every poll, not only when the queue is empty. Reclaim is a single conditional up
 
 - if a later `PENDING` row for the same `(card_id, operation)` exists, the stale row becomes `SENT`
   with `superseded`, so the newer row can run;
-- otherwise, if `attempts + 1 >= 20`, the stale row becomes `DEAD` with `attempts_exhausted`;
+- otherwise, if the retry window or the attempts cap is exhausted, the stale row becomes `DEAD` with `attempts_exhausted`;
 - otherwise, it becomes `PENDING`, `attempts += 1`, `locked_at = null`, and a new backoff
   `available_at`.
 
@@ -314,3 +315,25 @@ does.
   migration timestamp. Do not invent a facade method.
 - Notification fan-out is best-effort. A failed notification is logged but does not retry and does
   not change the outbox state; the Admin API is the authoritative view of dead letters.
+
+## Decisions made while landing on `dev` (review of #93)
+
+- **Retry budget is time based.** The review showed 20 attempts with a 30 s cap last about four minutes,
+  so a normal Atlassian incident dead-lettered every queued move. A row now lives for
+  `OUTBOX_MAX_AGE_HOURS = 24` from `created_at`; a coalesced move with a new destination and an Admin
+  requeue reset `created_at`, so each starts a fresh window. The delay cap stays 45 s on purpose: the
+  ticket requires the outbox to drain within one minute after connectivity returns (45 s cap + 5 s poll
+  + attempt), and a longer cap would break that for a single queued row. Raise
+  `OUTBOX_MAX_DELAY_MS` only if that target is dropped.
+- **KAN-45 conflicts run in the handler.** `JiraStatusSyncOutboxHandler` calls
+  `JiraSyncConflictDetector.noteBoardMove` with the move's `occurredAt` (so the inbound webhook can see
+  it) and `overtakenBy` before the first call and again right before `doTransition`. A queued move is
+  stale not only inside the 5 s window: a Jira change to another column at any later time overtakes it.
+  The detector's `record` is idempotent per `(mappingId, boardChangedAt)` because the webhook and the
+  retry can see the same conflict.
+- **Timed-out transitions are not re-sent blindly.** Every attempt starts with `getIssue`; a transition
+  that landed before the timeout turns into a `no-op`. The failed attempt is logged with
+  `outcome: unknown`.
+- **Bulk requeue.** `POST /jira/sync/outbox/requeue-dead?boardId=` requeues up to 500 dead rows oldest
+  first with the single-row rules and reports rows that an earlier row still blocks as `skipped`.
+- **Comments stay direct.** KAN-44 comment mirroring is not routed through the outbox in this change.
