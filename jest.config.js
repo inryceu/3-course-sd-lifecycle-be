@@ -8,11 +8,12 @@ module.exports = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   coverageReporters: ['text-summary', 'lcov', 'json-summary', 'html'],
-  // Agreed in the backlog index (T-40 / KAN-51): >= 70 % lines for the whole repo. The >= 85 % rule
-  // for the auth and jira-sync services is checked by scripts/check-service-coverage.js, because a
-  // Jest path/glob threshold would take those files out of the global pool.
+  // Backlog index (T-40 / KAN-51): >= 70 % lines for the whole repo; raised to 75 % by KAN-66
+  // (measured 78 %). The per-module rules (auth/jira-sync services 85 %, boards services 80 % and
+  // module 90 %) are checked by scripts/check-service-coverage.mjs, because a Jest path/glob
+  // threshold would take those files out of the global pool.
   coverageThreshold: {
-    global: { lines: 70 },
+    global: { lines: 75 },
   },
   testEnvironment: 'node',
   moduleNameMapper: {

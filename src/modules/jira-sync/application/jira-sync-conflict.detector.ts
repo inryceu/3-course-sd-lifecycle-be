@@ -142,8 +142,39 @@ export class JiraSyncConflictDetector {
     });
   }
 
-  /** Stores the conflict (resolution `jira`, unresolved) and notifies the board admins. */
+  /**
+   * For a move that waited in the outbox: the conflict when Jira's last recorded change went to
+   * another column at or after the move (or within the window before it). Jira wins.
+   */
+  async overtakenBy(ref: ConflictRef, board: BoardChange): Promise<DetectedConflict | null> {
+    const link = await this.links.findOne({
+      where: { id: ref.linkId },
+      select: {
+        id: true,
+        lastJiraChangeAt: true,
+        lastJiraColumnId: true,
+        lastJiraStatusName: true,
+      },
+    });
+    if (!link?.lastJiraChangeAt || !link.lastJiraColumnId) return null;
+    const jira = {
+      columnId: link.lastJiraColumnId,
+      statusName: link.lastJiraStatusName ?? link.lastJiraColumnId,
+      at: new Date(link.lastJiraChangeAt),
+    };
+    const overtaken =
+      jira.columnId !== board.columnId &&
+      jira.at.getTime() >= board.at.getTime() - CONFLICT_WINDOW_MS;
+    return overtaken ? { ...ref, board, jira } : null;
+  }
+
+  /** Stores the conflict (resolution `jira`, unresolved) once and notifies the board admins. */
   async record(conflict: DetectedConflict): Promise<SyncConflictLogEntity> {
+    // The inbound webhook and a queued outbound move can both see the same conflict: log it once.
+    const existing = await this.conflicts.findOne({
+      where: { mappingId: conflict.linkId, boardChangedAt: conflict.board.at },
+    });
+    if (existing) return existing;
     const summary = await this.boards.getBoardSummary(conflict.boardId);
     const title = (columnId: string) =>
       summary?.columns.find((column) => column.id === columnId)?.title ?? columnId;

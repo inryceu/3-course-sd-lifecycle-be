@@ -7,6 +7,7 @@ import { BoardColumnEntity } from '../infrastructure/persistence/column.entity';
 import { BoardAccessService } from './board-access.service';
 import { CardsService } from './cards.service';
 import { DeadlineRemindersService, REMINDER_WINDOW_MS } from './deadline-reminders.service';
+import { OutboxService } from '../../../common/outbox/outbox.service';
 
 const NOW = new Date('2026-10-27T10:00:00.000Z');
 
@@ -221,6 +222,7 @@ describe('CardsService re-arms the reminder', () => {
       {} as Repository<BoardColumnEntity>,
       access,
       publisher(),
+      { enqueue: jest.fn() } as unknown as OutboxService,
     );
     return { service, stored };
   }

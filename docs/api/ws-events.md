@@ -74,6 +74,8 @@ All events share one envelope. The Socket.IO event name equals `type`.
 
 `notification.created` is addressed to one user, so it is **not** sent to the board room: every authenticated socket is placed in the personal room `user:{userId}` on connect and receives it there. Its `boardId` is the board the notification is about.
 
+Notification `type`s carried by `notification.created`: `deadline.reminder`, `board.invited`, `jira.conflict` (a Jira change won over a BoardSync move, `payload`: `conflictId`, `boardId`, `cardId`, `jiraIssueKey`, `boardStatus`, `jiraStatus`) and `jira.sync.failed` (a queued Jira move was dead-lettered after the retry window or a permanent error; sent to every Admin of the board and to the member who made the move, `payload`: `outboxId`, `boardId`, `cardId`, `jiraIssueKey`, `operation`, `attempts`, `errorCode`). An Admin requeues dead rows with `POST /jira/sync/outbox/{outboxId}/requeue` or `POST /jira/sync/outbox/requeue-dead?boardId=`.
+
 `member.removed` goes to the board room (after the removed user's sockets left it) and to `user:{userId}` of the removed user.
 
 Events with origin `jira` (webhook or import) and label/comment changes use the same types: label changes arrive as `card.updated` (labels assigned/unassigned) or `board.updated` (label deleted), comment deletion as `board.updated`. Creating or editing a label publishes no event (see the `labels-comments` spec).

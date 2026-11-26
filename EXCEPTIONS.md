@@ -6,11 +6,13 @@ Review cadence: every exception is re-evaluated **30 days** from the date listed
 
 ## Summary
 
+Counts from `pnpm audit` on 2026-11-26 (70 findings, 0 critical). `pnpm audit` counts one finding per dependency path, so the totals exceed the number of advisories listed per package below; the advisories are the same.
+
 | Severity | Count |
 |----------|-------|
 | Critical | 0 |
-| High     | 18 |
-| Moderate | 21 |
+| High     | 28 |
+| Moderate | 34 |
 | Low      | 8 |
 
 All remaining findings are **transitive dependencies** pulled in by NestJS, Angular CDK (via `@nestjs/cli`), webpack, TypeORM, bcrypt, or testing tooling. None are reachable through BoardSync application code paths in a way that is exploitable in production.

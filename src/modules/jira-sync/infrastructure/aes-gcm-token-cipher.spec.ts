@@ -65,4 +65,19 @@ describe('AesGcmTokenCipher', () => {
   it('refuses a key that is not 32 bytes', () => {
     expect(() => cipher('abcd')).toThrow(/32 bytes/);
   });
+
+  it.each([
+    ['an empty value', ''],
+    ['an unknown version', 'v2.a.b.c'],
+    ['a missing part', 'v1.a.b'],
+    ['an empty iv', 'v1..b.c'],
+    ['garbage that is not base64url GCM', 'v1.a.b.c'],
+  ])('refuses %s with a TokenIntegrityError', (_name, stored) => {
+    expect(() => cipher(KEY_A).decrypt(stored)).toThrow(TokenIntegrityError);
+  });
+
+  it('refuses a valid value with an extra trailing part', () => {
+    const c = cipher(KEY_A);
+    expect(() => c.decrypt(`${c.encrypt('secret')}.extra`)).toThrow(TokenIntegrityError);
+  });
 });

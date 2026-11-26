@@ -5,16 +5,18 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  schedule:
+    - cron: '0 6 * * 1' # weekly; only the Dependency Audit job runs
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '20'
   PNPM_VERSION: '9.0.0'
 
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: '.nvmrc'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -50,6 +52,7 @@ jobs:
   typecheck:
     name: TypeCheck
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -62,7 +65,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: '.nvmrc'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -77,6 +80,7 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     env:
       NODE_ENV: test
       PORT: 3000
@@ -121,7 +125,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: '.nvmrc'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -156,6 +160,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     needs: [lint, typecheck, test]
     steps:
       - name: Checkout code
@@ -169,7 +174,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: '.nvmrc'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -188,6 +193,7 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -204,3 +210,27 @@ jobs:
           tags: boardsync-backend:ci
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
+
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run pnpm audit
+        run: pnpm audit --audit-level=critical
