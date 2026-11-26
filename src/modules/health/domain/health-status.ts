@@ -6,3 +6,6 @@ export interface HealthStatus {
   /** Process uptime in seconds. */
   uptime: number;
 }
+
+/** Liveness only says the process runs; it never reports on dependencies. */
+export type LivenessStatus = Omit<HealthStatus, 'database'>;
