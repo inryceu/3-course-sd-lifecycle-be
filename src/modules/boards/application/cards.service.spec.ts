@@ -9,6 +9,7 @@ import { BoardColumnEntity } from '../infrastructure/persistence/column.entity';
 import { LabelEntity } from '../infrastructure/persistence/label.entity';
 import { BoardAccessService } from './board-access.service';
 import { CardsService } from './cards.service';
+import { OutboxService } from '../../../common/outbox/outbox.service';
 
 const T0 = new Date('2026-10-27T10:00:00.000Z');
 
@@ -131,6 +132,7 @@ function build(setup: Setup = {}) {
     columns as unknown as Repository<BoardColumnEntity>,
     access,
     { publish } as unknown as EventPublisher,
+    { enqueue: jest.fn() } as unknown as OutboxService,
   );
   return { service, manager, dataSource, cards, access, publish, calls };
 }
