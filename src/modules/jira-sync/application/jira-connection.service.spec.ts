@@ -79,4 +79,33 @@ describe('JiraConnectionService', () => {
     expect(connections.delete).not.toHaveBeenCalled();
     expect(webhooks.removeForBoard).not.toHaveBeenCalled();
   });
+
+  describe('requiresReconnect', () => {
+    beforeEach(() => jest.useFakeTimers().setSystemTime(new Date('2026-10-03T13:00:00Z')));
+    afterEach(() => jest.useRealTimers());
+
+    it('is false for an idle connection whose access token expired but can be refreshed', async () => {
+      const { service } = setup(BoardRole.ADMIN, stored); // expired 2 h ago, refresh token present
+      expect((await service.getStatus('u', 'b')).requiresReconnect).toBe(false);
+    });
+
+    it('is true when the refresh token was revoked and the access token expired', async () => {
+      const { service } = setup(BoardRole.ADMIN, { ...stored, refreshTokenEnc: null });
+      expect((await service.getStatus('u', 'b')).requiresReconnect).toBe(true);
+    });
+
+    it('is false while a still-valid access token has no refresh token yet', async () => {
+      const { service } = setup(BoardRole.ADMIN, {
+        ...stored,
+        refreshTokenEnc: null,
+        expiresAt: new Date('2026-10-03T13:30:00Z'),
+      });
+      expect((await service.getStatus('u', 'b')).requiresReconnect).toBe(false);
+    });
+
+    it('is false when Jira is not connected', async () => {
+      const { service } = setup(BoardRole.ADMIN);
+      expect((await service.getStatus('u', 'b')).requiresReconnect).toBe(false);
+    });
+  });
 });

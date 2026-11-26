@@ -97,3 +97,22 @@ export class ResolveConflictDto {
   @IsIn(['jira', 'boardsync'])
   resolution: 'jira' | 'boardsync';
 }
+
+export class ListSyncLogsQueryDto extends BoardQueryDto {
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 50 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @ApiPropertyOptional({ description: 'nextCursor of the previous page' })
+  @IsOptional()
+  @IsUUID()
+  cursor?: string;
+
+  @ApiPropertyOptional({ enum: ['SUCCESS', 'FAILED', 'CONFLICT'] })
+  @IsOptional()
+  @IsIn(['SUCCESS', 'FAILED', 'CONFLICT'])
+  status?: 'SUCCESS' | 'FAILED' | 'CONFLICT';
+}

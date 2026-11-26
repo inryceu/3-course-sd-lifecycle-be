@@ -141,3 +141,64 @@ describe('JiraSyncConflictsService.resolve', () => {
     expect(ctx.conflicts.update).not.toHaveBeenCalled();
   });
 });
+
+describe('JiraSyncConflictsService.list', () => {
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({ ...ROW, id: `conflict-${index + 1}` }));
+
+  function listSetup(result: unknown[]) {
+    const ctx = setup();
+    const query = {
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue(result),
+    };
+    (ctx.conflicts as unknown as { createQueryBuilder: jest.Mock }).createQueryBuilder = jest
+      .fn()
+      .mockReturnValue(query);
+    return { ...ctx, query };
+  }
+
+  it('requires an admin of the board before reading anything', async () => {
+    const ctx = listSetup([]);
+    ctx.statusMappings.requireRole.mockRejectedValue(new ForbiddenException());
+
+    await expect(ctx.service.list('member-1', 'board-1')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(ctx.statusMappings.requireRole).toHaveBeenCalledWith('member-1', 'board-1', true);
+    expect(ctx.query.getMany).not.toHaveBeenCalled();
+  });
+
+  it('fetches one row more than the limit, newest first, and returns the limit', async () => {
+    const ctx = listSetup(rows(3));
+
+    const page = await ctx.service.list('admin-1', 'board-1', 2);
+
+    expect(ctx.query.limit).toHaveBeenCalledWith(3);
+    expect(ctx.query.orderBy).toHaveBeenCalledWith('c.createdAt', 'DESC');
+    expect(page.items.map((item) => item.id)).toEqual(['conflict-1', 'conflict-2']);
+    expect(page.nextCursor).toBe('conflict-2');
+    expect(ctx.query.andWhere).not.toHaveBeenCalled();
+  });
+
+  it('has no next cursor on the last page', async () => {
+    const page = await listSetup(rows(2)).service.list('admin-1', 'board-1', 2);
+    expect(page.items).toHaveLength(2);
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it('continues after the cursor, scoped to the same board', async () => {
+    const ctx = listSetup([]);
+
+    await ctx.service.list('admin-1', 'board-1', 50, 'conflict-9');
+
+    expect(ctx.query.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('p.board_id = :boardId'),
+      { cursor: 'conflict-9' },
+    );
+  });
+});

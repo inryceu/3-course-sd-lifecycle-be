@@ -10,8 +10,9 @@ import { JiraImportService } from './application/jira-import.service';
 import { JiraStatusMappingService } from './application/jira-status-mapping.service';
 import { JiraStatusSyncListener } from './application/jira-status-sync.listener';
 import { JiraStatusSyncService } from './application/jira-status-sync.service';
-import { JiraSyncConflictDetector } from './application/jira-sync-conflict.detector';
 import { JiraSyncConflictsService } from './application/jira-sync-conflicts.service';
+import { JiraSyncConflictDetector } from './application/jira-sync-conflict.detector';
+import { JiraSyncLogsService } from './application/jira-sync-logs.service';
 import { JiraOAuthService } from './application/jira-oauth.service';
 import { JiraWebhookAuthenticityService } from './application/jira-webhook-authenticity.service';
 import { JiraWebhookDeliveryService } from './application/jira-webhook-delivery.service';
@@ -36,6 +37,7 @@ import { SyncLogEntity } from './infrastructure/persistence/sync-log.entity';
 import { JiraConflictsController } from './presentation/jira-conflicts.controller';
 import { JiraImportController } from './presentation/jira-import.controller';
 import { JiraOAuthController } from './presentation/jira-oauth.controller';
+import { JiraSyncLogsController } from './presentation/jira-sync-logs.controller';
 import { JiraWebhookController } from './presentation/jira-webhook.controller';
 import { BoardsModule } from '../boards';
 import { JiraOutboxAdminService } from './application/jira-outbox-admin.service';
@@ -64,6 +66,7 @@ import { JiraOutboxController } from './presentation/jira-outbox.controller';
     JiraWebhookController,
     JiraOutboxController,
     JiraConflictsController,
+    JiraSyncLogsController,
   ],
   providers: [
     JiraOutboxAdminService,
@@ -83,6 +86,7 @@ import { JiraOutboxController } from './presentation/jira-outbox.controller';
     JiraWebhookDeliveryService,
     JiraWebhookLifecycleService,
     JiraWebhookService,
+    JiraSyncLogsService,
     AesGcmTokenCipher,
     AtlassianOAuthHttpClient,
     JiraGatewayHttpClient,

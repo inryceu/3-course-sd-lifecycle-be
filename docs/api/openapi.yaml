@@ -1350,6 +1350,41 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /jira/sync-logs:
+    get:
+      tags: [jira]
+      operationId: listJiraSyncLogs
+      summary: Sync logs of a board, newest first (Admin)
+      description: |
+        Returns paginated sync logs with optional status filter. Cursor-based pagination.
+      parameters:
+        - $ref: '#/components/parameters/BoardIdQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          description: Filter by sync status
+          schema:
+            type: string
+            enum: [SUCCESS, FAILED, CONFLICT]
+      responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '200':
+          description: A page of sync logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraSyncLogPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /jira/sync/outbox:
     get:
       tags: [jira]
@@ -2063,7 +2098,7 @@ components:
           format: uri
     JiraConnectionStatus:
       type: object
-      required: [connected, boardId]
+      required: [connected, boardId, requiresReconnect]
       description: Never contains tokens
       properties:
         connected:
@@ -2089,6 +2124,56 @@ components:
         connectedAt:
           type: string
           format: date-time
+          nullable: true
+        requiresReconnect:
+          type: boolean
+          description: |
+            True only when the refresh token is gone (rejected with invalid_grant) and the access
+            token has expired. An expired access token alone is refreshed on the next call.
+    JiraSyncDirection:
+      type: string
+      enum: [TO_JIRA, FROM_JIRA]
+    JiraSyncStatus:
+      type: string
+      enum: [SUCCESS, FAILED, CONFLICT]
+    JiraSyncLog:
+      type: object
+      required: [id, boardId, direction, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        boardId:
+          type: string
+          format: uuid
+        direction:
+          $ref: '#/components/schemas/JiraSyncDirection'
+        status:
+          $ref: '#/components/schemas/JiraSyncStatus'
+        payload:
+          type: object
+          nullable: true
+          additionalProperties: true
+        errorMessage:
+          type: string
+          nullable: true
+        mappingId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    JiraSyncLogPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/JiraSyncLog'
+        nextCursor:
+          type: string
           nullable: true
     JiraImportRequest:
       type: object
