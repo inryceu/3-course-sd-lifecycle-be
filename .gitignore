@@ -28,7 +28,6 @@ Thumbs.db
 # Git
 .git
 .gitignore
-.gitattributes
 
 # Logs
 logs
@@ -44,6 +43,9 @@ coverage
 *.pem
 .cache
 tmp
-tmp
 temp
 test-results
+
+#tls
+ssl/
+secrets/
