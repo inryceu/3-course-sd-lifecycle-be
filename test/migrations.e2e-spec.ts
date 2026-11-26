@@ -63,6 +63,7 @@ describe('Migrations (e2e)', () => {
         'jira_webhooks',
         'jira_webhook_deliveries',
         'sync_logs',
+        'sync_outbox',
         'migrations',
       ]),
     );

@@ -19,7 +19,6 @@ import {
 } from '../infrastructure/persistence/sync-log.entity';
 import { plainTextToAdf } from './helpers/plain-text-to-adf';
 import { JIRA_GATEWAY, AddCommentInput, AddCommentResult, JiraGateway } from './jira-gateway.port';
-import { JiraRetryService } from './jira-retry.service';
 
 const SYNC_BUDGET_MS = 5_000;
 const MIN_CALL_BUDGET_MS = 250;
@@ -65,7 +64,6 @@ export class JiraCommentSyncService {
     @Inject(BOARDS_FACADE) private readonly boards: BoardsFacade,
     @InjectRepository(SyncLogEntity)
     private readonly logs: Repository<SyncLogEntity>,
-    private readonly retry: JiraRetryService,
   ) {}
 
   async syncComment(event: DomainEventOf<'card.commented'>): Promise<void> {
@@ -106,10 +104,7 @@ export class JiraCommentSyncService {
       };
       let created: AddCommentResult;
       try {
-        created = await this.retry.execute(() => this.gateway.addComment(input), {
-          deadlineMs: deadline,
-          operationName: `addComment(${issueKey})`,
-        });
+        created = await this.gateway.addComment(input);
       } catch (error) {
         // The POST was sent and aborted: Jira may have stored the comment, so a retry could
         // duplicate it. Marked like the status sync's `outcome: 'unknown'` so an outbox skips it.

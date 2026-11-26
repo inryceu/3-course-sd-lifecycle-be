@@ -263,8 +263,7 @@ describe('Jira comment sync (e2e)', () => {
     const commentId = (response.body as CommentView).id;
 
     await waitForAddCommentCall(1);
-    jira.addCommentError = new JiraServerError(503, 3, 3);
-    deferred.reject(jira.addCommentError);
+    deferred.reject(new JiraServerError(503, 1, 1));
 
     const row = await waitForLog(card.id);
     expect(row).toMatchObject({
@@ -280,7 +279,6 @@ describe('Jira comment sync (e2e)', () => {
         latencyMs: expect.any(Number),
       },
     });
-    expect(jira.addCommentCalls).toHaveLength(3);
     await waitForCommentFlag(card.id, commentId, false);
   });
 
@@ -320,7 +318,7 @@ describe('Jira comment sync (e2e)', () => {
   });
 
   it('keeps the comment unsynced and writes a failed row when Jira rejects it', async () => {
-    jira.addCommentError = new JiraServerError(503, 3, 3);
+    jira.addCommentError = new JiraServerError(503, 1, 1);
     const { card, issueKey, mappingId } = await linkedCard();
 
     const response = await postComment(admin, card.id, 'This one fails').expect(201);
@@ -340,7 +338,7 @@ describe('Jira comment sync (e2e)', () => {
         latencyMs: expect.any(Number),
       },
     });
-    expect(jira.addCommentCalls).toHaveLength(3);
+    expect(jira.addCommentCalls).toHaveLength(1);
     await waitForCommentFlag(card.id, commentId, false);
   });
 });

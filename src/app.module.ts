@@ -15,6 +15,7 @@ import { BoardsModule } from './modules/boards';
 import { HealthModule } from './modules/health';
 import { JiraSyncModule } from './modules/jira-sync';
 import { RealtimeModule } from './modules/realtime';
+import { OutboxModule } from './common/outbox/outbox.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { RealtimeModule } from './modules/realtime';
     }),
 
     EventBusModule,
+    OutboxModule,
     AuthModule,
     BoardsModule,
     JiraSyncModule,

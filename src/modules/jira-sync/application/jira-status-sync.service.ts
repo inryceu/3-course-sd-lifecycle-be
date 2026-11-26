@@ -23,7 +23,6 @@ import {
   SyncStatus,
 } from '../infrastructure/persistence/sync-log.entity';
 import { JIRA_GATEWAY, JiraGateway, JiraStatus, JiraTransition } from './jira-gateway.port';
-import { JiraRetryService } from './jira-retry.service';
 import {
   JiraStatusMappingService,
   LinkedBoard,
@@ -83,7 +82,7 @@ interface TransitionCandidate {
   readonly mapping: StatusMappingView;
 }
 
-export class SyncFailure extends Error {
+class SyncFailure extends Error {
   constructor(
     readonly reason: FailureReason,
     message: string = reason,
@@ -110,7 +109,6 @@ export class JiraStatusSyncService {
     private readonly links: Repository<JiraIssueMappingEntity>,
     private readonly conflicts: JiraSyncConflictDetector,
     @Inject(BOARDS_FACADE) private readonly boards: BoardsFacade,
-    private readonly retry: JiraRetryService,
   ) {}
 
   async syncCardMove(event: DomainEventOf<'card.moved'>): Promise<void> {
@@ -361,15 +359,11 @@ export class JiraStatusSyncService {
 
   private async getIssue(boardId: string, issueKey: string, deadline: number) {
     try {
-      return await this.retry.execute(
-        () =>
-          this.gateway.getIssue({
-            boardId,
-            issueIdOrKey: issueKey,
-            timeBudgetMs: this.callBudget(deadline),
-          }),
-        { deadlineMs: deadline, operationName: `getIssue(${issueKey})` },
-      );
+      return await this.gateway.getIssue({
+        boardId,
+        issueIdOrKey: issueKey,
+        timeBudgetMs: this.callBudget(deadline),
+      });
     } catch (error) {
       if (error instanceof JiraClientError && error.status === 404) {
         throw new SyncFailure('issue not found', error.message);
@@ -383,16 +377,12 @@ export class JiraStatusSyncService {
     issueKey: string,
     deadline: number,
   ): Promise<readonly JiraTransition[]> {
-    const result = await this.retry.execute(
-      () =>
-        this.gateway.listTransitions({
-          boardId,
-          issueIdOrKey: issueKey,
-          includeUnavailableTransitions: false,
-          timeBudgetMs: this.callBudget(deadline),
-        }),
-      { deadlineMs: deadline, operationName: `listTransitions(${issueKey})` },
-    );
+    const result = await this.gateway.listTransitions({
+      boardId,
+      issueIdOrKey: issueKey,
+      includeUnavailableTransitions: false,
+      timeBudgetMs: this.callBudget(deadline),
+    });
     return result.transitions;
   }
 
@@ -402,16 +392,12 @@ export class JiraStatusSyncService {
     transitionId: string,
     deadline: number,
   ): Promise<void> {
-    await this.retry.execute(
-      () =>
-        this.gateway.doTransition({
-          boardId,
-          issueIdOrKey: issueKey,
-          transitionId,
-          timeBudgetMs: this.callBudget(deadline),
-        }),
-      { deadlineMs: deadline, operationName: `doTransition(${issueKey})` },
-    );
+    await this.gateway.doTransition({
+      boardId,
+      issueIdOrKey: issueKey,
+      transitionId,
+      timeBudgetMs: this.callBudget(deadline),
+    });
   }
 
   private async findMappingId(boardId: string, issueKey: string): Promise<string | null> {

@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { BoardRole, BoardsFacade } from '../../boards';
 import {
@@ -7,8 +7,6 @@ import {
   SyncStatus,
 } from '../infrastructure/persistence/sync-log.entity';
 import { JiraIssueMappingEntity } from '../infrastructure/persistence/jira-issue-mapping.entity';
-import { JiraStatusSyncService } from './jira-status-sync.service';
-import { JiraCommentSyncService } from './jira-comment-sync.service';
 import { JiraSyncLogsService } from './jira-sync-logs.service';
 
 const NOW = new Date('2026-10-03T10:00:00.000Z');
@@ -127,29 +125,13 @@ function setup() {
     getMemberRole: jest.fn(),
   } as unknown as jest.Mocked<BoardsFacade>;
 
-  const statusSync = {
-    push: jest.fn(),
-  } as unknown as jest.Mocked<JiraStatusSyncService>;
-
-  const commentSync = {
-    syncComment: jest.fn(),
-  } as unknown as jest.Mocked<JiraCommentSyncService>;
-
-  const service = new JiraSyncLogsService(
-    logsRepo,
-    mappingsRepo,
-    statusSync,
-    commentSync,
-    boardsFacade,
-  );
+  const service = new JiraSyncLogsService(logsRepo, mappingsRepo, boardsFacade);
 
   return {
     service,
     logsRepo,
     mappingsRepo,
     boardsFacade,
-    statusSync,
-    commentSync,
     logs: () => logs,
     mappings: () => mappings,
   };
@@ -315,256 +297,6 @@ describe('JiraSyncLogsService', () => {
       const result = await service.list('user-1', 'board-1');
       expect(result.items).toHaveLength(1);
       expect(result.items[0].boardId).toBe('board-1');
-    });
-  });
-
-  describe('retry', () => {
-    it('retries failed status sync log with fromColumnId and toColumnId', async () => {
-      const { service, logs, mappings, boardsFacade, statusSync } = setup();
-      boardsFacade.getMemberRole.mockResolvedValue(BoardRole.ADMIN);
-      statusSync.push.mockResolvedValue({ status: SyncStatus.SUCCESS, reason: null });
-
-      const mapping = makeMapping({ id: 'mapping-1', boardId: 'board-1' });
-      mappings().push(mapping);
-      const log = makeLog({
-        id: 'log-1',
-        status: SyncStatus.FAILED,
-        mappingId: 'mapping-1',
-        mapping,
-        direction: SyncDirection.TO_JIRA,
-        payload: {
-          issueKey: 'KAN-1',
-          cardId: 'card-1',
-          fromColumnId: 'col-todo',
-          toColumnId: 'col-doing',
-          outcome: 'failed', // not 'unknown'
-        },
-      });
-      logs().push(log);
-
-      const result = await service.retry('user-1', 'log-1');
-
-      expect(result).toEqual({ status: SyncStatus.SUCCESS, reason: null });
-      expect(statusSync.push).toHaveBeenCalledWith({
-        boardId: 'board-1',
-        cardId: 'card-1',
-        issueKey: 'KAN-1',
-        fromColumnId: 'col-todo',
-        toColumnId: 'col-doing',
-      });
-    });
-
-    it('retries failed comment sync log', async () => {
-      const { service, logs, mappings, boardsFacade, commentSync } = setup();
-      boardsFacade.getMemberRole.mockResolvedValue(BoardRole.ADMIN);
-      commentSync.syncComment.mockResolvedValue(undefined);
-
-      const mapping = makeMapping({ id: 'mapping-1', boardId: 'board-1' });
-      mappings().push(mapping);
-      const log = makeLog({
-        id: 'log-1',
-        status: SyncStatus.FAILED,
-        mappingId: 'mapping-1',
-        mapping,
-        direction: SyncDirection.TO_JIRA,
-        payload: {
-          issueKey: 'KAN-1',
-          cardId: 'card-1',
-          commentId: 'comment-1',
-          outcome: 'failed', // not 'unknown'
-          text: 'test comment',
-          createdAt: NOW.toISOString(),
-        },
-      });
-      logs().push(log);
-
-      const result = await service.retry('user-1', 'log-1');
-
-      expect(result).toEqual({ status: SyncStatus.SUCCESS, reason: null });
-      expect(commentSync.syncComment).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'card.commented',
-          boardId: 'board-1',
-          actorId: 'user-1',
-          payload: expect.objectContaining({
-            id: 'comment-1',
-            cardId: 'card-1',
-            text: 'test comment',
-          }),
-        }),
-      );
-    });
-
-    it('rejects non-admin access with ForbiddenException', async () => {
-      const { service, logs, mappings, boardsFacade } = setup();
-      boardsFacade.getMemberRole.mockResolvedValue(BoardRole.MEMBER);
-
-      const mapping = makeMapping({ id: 'mapping-1', boardId: 'board-1' });
-      mappings().push(mapping);
-      const log = makeLog({
-        id: 'log-1',
-        status: SyncStatus.FAILED,
-        mappingId: 'mapping-1',
-        mapping,
-        direction: SyncDirection.TO_JIRA,
-        payload: { issueKey: 'KAN-1', cardId: 'card-1', outcome: 'failed' },
-      });
-      logs().push(log);
-
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(ForbiddenException);
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(
-        'Only board admins can retry sync logs',
-      );
-    });
-
-    it('throws NotFoundException when log does not exist', async () => {
-      const { service, boardsFacade } = setup();
-      boardsFacade.getMemberRole.mockResolvedValue(BoardRole.ADMIN);
-
-      await expect(service.retry('user-1', 'non-existent')).rejects.toThrow(NotFoundException);
-      await expect(service.retry('user-1', 'non-existent')).rejects.toThrow('Sync log not found');
-    });
-
-    it('throws ForbiddenException when log is not FAILED', async () => {
-      const { service, logs, mappings, boardsFacade } = setup();
-      boardsFacade.getMemberRole.mockResolvedValue(BoardRole.ADMIN);
-
-      const mapping = makeMapping({ id: 'mapping-1', boardId: 'board-1' });
-      mappings().push(mapping);
-      const log = makeLog({
-        id: 'log-1',
-        status: SyncStatus.SUCCESS,
-        mappingId: 'mapping-1',
-        mapping,
-      });
-      logs().push(log);
-
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(ForbiddenException);
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(
-        'Only failed sync logs can be retried',
-      );
-    });
-
-    it('throws ForbiddenException when log is missing board reference', async () => {
-      const { service, logs, boardsFacade } = setup();
-      boardsFacade.getMemberRole.mockResolvedValue(BoardRole.ADMIN);
-
-      const log = makeLog({
-        id: 'log-1',
-        status: SyncStatus.FAILED,
-        mappingId: null,
-        mapping: undefined,
-        payload: {},
-      });
-      logs().push(log);
-
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(NotFoundException);
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(
-        'Sync log is missing board reference',
-      );
-    });
-
-    it('throws ForbiddenException when status sync log missing required data', async () => {
-      const { service, logs, mappings, boardsFacade } = setup();
-      boardsFacade.getMemberRole.mockResolvedValue(BoardRole.ADMIN);
-
-      const mapping = makeMapping({ id: 'mapping-1', boardId: 'board-1' });
-      mappings().push(mapping);
-      const log = makeLog({
-        id: 'log-1',
-        status: SyncStatus.FAILED,
-        mappingId: 'mapping-1',
-        mapping,
-        direction: SyncDirection.TO_JIRA,
-        payload: {
-          outcome: 'failed',
-          // missing issueKey and cardId
-        },
-      });
-      logs().push(log);
-
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(ForbiddenException);
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(
-        'Sync log is missing required data for retry',
-      );
-    });
-
-    it('throws ForbiddenException when comment sync log missing required data', async () => {
-      const { service, logs, mappings, boardsFacade } = setup();
-      boardsFacade.getMemberRole.mockResolvedValue(BoardRole.ADMIN);
-
-      const mapping = makeMapping({ id: 'mapping-1', boardId: 'board-1' });
-      mappings().push(mapping);
-      const log = makeLog({
-        id: 'log-1',
-        status: SyncStatus.FAILED,
-        mappingId: 'mapping-1',
-        mapping,
-        direction: SyncDirection.TO_JIRA,
-        payload: {
-          issueKey: 'KAN-1',
-          cardId: 'card-1',
-          // missing commentId and fromColumnId/toColumnId
-          outcome: 'failed',
-        },
-      });
-      logs().push(log);
-
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(ForbiddenException);
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(
-        'This sync log cannot be retried',
-      );
-    });
-
-    it('throws ForbiddenException when direction is FROM_JIRA', async () => {
-      const { service, logs, mappings, boardsFacade } = setup();
-      boardsFacade.getMemberRole.mockResolvedValue(BoardRole.ADMIN);
-
-      const mapping = makeMapping({ id: 'mapping-1', boardId: 'board-1' });
-      mappings().push(mapping);
-      const log = makeLog({
-        id: 'log-1',
-        status: SyncStatus.FAILED,
-        mappingId: 'mapping-1',
-        mapping,
-        direction: SyncDirection.FROM_JIRA,
-        payload: {
-          issueKey: 'KAN-1',
-          cardId: 'card-1',
-          outcome: 'failed',
-        },
-      });
-      logs().push(log);
-
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(ForbiddenException);
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(
-        'This sync log cannot be retried',
-      );
-    });
-
-    it('throws ForbiddenException when outcome is unknown but fromColumnId or toColumnId missing', async () => {
-      const { service, logs, mappings, boardsFacade } = setup();
-      boardsFacade.getMemberRole.mockResolvedValue(BoardRole.ADMIN);
-
-      const mapping = makeMapping({ id: 'mapping-1', boardId: 'board-1' });
-      mappings().push(mapping);
-      const log = makeLog({
-        id: 'log-1',
-        status: SyncStatus.FAILED,
-        mappingId: 'mapping-1',
-        mapping,
-        direction: SyncDirection.TO_JIRA,
-        payload: {
-          issueKey: 'KAN-1',
-          cardId: 'card-1',
-          fromColumnId: 'col-todo',
-          // missing toColumnId
-          outcome: 'unknown',
-        },
-      });
-      logs().push(log);
-
-      await expect(service.retry('user-1', 'log-1')).rejects.toThrow(ForbiddenException);
     });
   });
 });

@@ -32,7 +32,18 @@ export class JiraConnectionService {
     if (!role) {
       throw new NotFoundException('Board not found');
     }
-    const connection = await this.connections.findOne({ where: { boardId } });
+    const connection = await this.connections.findOne({
+      where: { boardId },
+      // Tokens are `select: false`; only the null-ness of the refresh token is read, never exposed.
+      select: {
+        cloudId: true,
+        siteUrl: true,
+        scopes: true,
+        expiresAt: true,
+        connectedAt: true,
+        refreshTokenEnc: true,
+      },
+    });
     if (!connection) {
       return {
         connected: false,
@@ -45,9 +56,11 @@ export class JiraConnectionService {
         requiresReconnect: false,
       };
     }
-    const now = Date.now();
-    const expiresAt = connection.expiresAt.getTime();
-    const requiresReconnect = expiresAt < now - 5 * 60 * 1000;
+    // Same condition as the gateway's "reconnect required": the refresh token is gone (cleared on
+    // invalid_grant) and the access token can no longer be used. An expired access token alone is
+    // refreshed transparently on the next call.
+    const requiresReconnect =
+      connection.refreshTokenEnc === null && connection.expiresAt.getTime() <= Date.now();
     return {
       connected: true,
       boardId,

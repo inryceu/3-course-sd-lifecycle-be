@@ -11,6 +11,7 @@ import { LabelEntity } from '../infrastructure/persistence/label.entity';
 import { BoardAccessService } from './board-access.service';
 import { toBoardSnapshot, toCardSnapshot } from './board-events';
 import { CardView, toCardView } from './views';
+import { OutboxService } from '../../../common/outbox/outbox.service';
 
 export interface CreateCardInput {
   title: string;
@@ -53,6 +54,7 @@ export class CardsService {
     @InjectRepository(BoardColumnEntity) private readonly columns: Repository<BoardColumnEntity>,
     private readonly access: BoardAccessService,
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
+    private readonly outbox: OutboxService,
   ) {}
 
   async listByColumn(userId: string, columnId: string): Promise<CardView[]> {
@@ -143,7 +145,7 @@ export class CardsService {
     await this.access.requireEditor(userId, boardId);
 
     const { view, fromColumnId } = await this.dataSource.transaction(async (manager) => {
-      await this.lockBoard(manager, boardId);
+      const board = await this.lockBoard(manager, boardId);
 
       const current = await manager.findOne(CardEntity, {
         where: { id: cardId },
@@ -180,6 +182,24 @@ export class CardsService {
         where: { id: cardId },
         relations: { labels: true },
       });
+
+      // Durable Jira intent: same transaction as the move, no Jira call in the request.
+      if (!sameColumn && moved.jiraIssueKey && board.jiraProjectKey) {
+        await this.outbox.enqueue(manager, {
+          operation: 'TRANSITION_ISSUE',
+          boardId,
+          cardId,
+          actorId: userId,
+          payload: {
+            cardId,
+            boardId,
+            jiraIssueKey: moved.jiraIssueKey,
+            fromColumnId: from.columnId,
+            targetColumnId: target.id,
+            occurredAt: new Date().toISOString(),
+          },
+        });
+      }
       return { view: toCardView(moved), fromColumnId: from.columnId };
     });
 
@@ -485,7 +505,7 @@ export class CardsService {
     return toBoardSnapshot(board);
   }
 
-  private async lockBoard(manager: EntityManager, boardId: string): Promise<void> {
+  private async lockBoard(manager: EntityManager, boardId: string): Promise<BoardEntity> {
     const board = await manager
       .createQueryBuilder(BoardEntity, 'board')
       .setLock('pessimistic_write')
@@ -494,5 +514,6 @@ export class CardsService {
     if (!board) {
       throw new NotFoundException('Board not found');
     }
+    return board;
   }
 }

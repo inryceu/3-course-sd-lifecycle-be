@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BOARDS_FACADE, BoardsFacade, BoardRole } from '../../boards';
@@ -8,8 +8,6 @@ import {
   SyncStatus,
 } from '../infrastructure/persistence/sync-log.entity';
 import { JiraIssueMappingEntity } from '../infrastructure/persistence/jira-issue-mapping.entity';
-import { JiraStatusSyncService } from './jira-status-sync.service';
-import { JiraCommentSyncService } from './jira-comment-sync.service';
 
 export interface SyncLogView {
   id: string;
@@ -25,11 +23,6 @@ export interface SyncLogView {
 export interface SyncLogPageView {
   items: SyncLogView[];
   nextCursor: string | null;
-}
-
-export interface RetryResult {
-  status: SyncStatus;
-  reason: string | null;
 }
 
 const toView = (row: SyncLogEntity): SyncLogView => ({
@@ -50,8 +43,6 @@ export class JiraSyncLogsService {
     private readonly logs: Repository<SyncLogEntity>,
     @InjectRepository(JiraIssueMappingEntity)
     private readonly mappings: Repository<JiraIssueMappingEntity>,
-    private readonly statusSync: JiraStatusSyncService,
-    private readonly commentSync: JiraCommentSyncService,
     @Inject(BOARDS_FACADE) private readonly boards: BoardsFacade,
   ) {}
 
@@ -86,70 +77,5 @@ export class JiraSyncLogsService {
     const rows = await query.getMany();
     const items = rows.slice(0, limit).map(toView);
     return { items, nextCursor: rows.length > limit ? items[items.length - 1].id : null };
-  }
-
-  async retry(userId: string, logId: string): Promise<RetryResult> {
-    const log = await this.logs.findOne({
-      where: { id: logId },
-      relations: ['mapping'],
-    });
-    if (!log) {
-      throw new NotFoundException('Sync log not found');
-    }
-    const boardId = log.mapping?.boardId ?? (log.payload['boardId'] as string);
-    if (!boardId) {
-      throw new NotFoundException('Sync log is missing board reference');
-    }
-    const role = await this.boards.getMemberRole(boardId, userId);
-    if (role !== BoardRole.ADMIN) {
-      throw new ForbiddenException('Only board admins can retry sync logs');
-    }
-
-    if (log.status !== SyncStatus.FAILED) {
-      throw new ForbiddenException('Only failed sync logs can be retried');
-    }
-
-    const outcome = log.payload['outcome'] as string | undefined;
-    const issueKey = log.payload['issueKey'] as string | undefined;
-    const cardId = log.payload['cardId'] as string | undefined;
-    const fromColumnId = log.payload['fromColumnId'] as string | undefined;
-    const toColumnId = log.payload['toColumnId'] as string | undefined;
-
-    if (!issueKey || !cardId) {
-      throw new ForbiddenException('Sync log is missing required data for retry');
-    }
-
-    if (log.direction === SyncDirection.TO_JIRA) {
-      if (outcome !== 'unknown' && fromColumnId && toColumnId) {
-        const result = await this.statusSync.push({
-          boardId,
-          cardId,
-          issueKey,
-          fromColumnId,
-          toColumnId,
-        });
-        return { status: result.status, reason: result.reason };
-      }
-      if (log.payload['commentId'] && outcome !== 'unknown') {
-        await this.commentSync.syncComment({
-          type: 'card.commented',
-          boardId,
-          actorId: userId,
-          origin: 'user',
-          occurredAt: new Date().toISOString(),
-          payload: {
-            id: log.payload['commentId'] as string,
-            cardId,
-            authorId: userId,
-            text: (log.payload['text'] as string) ?? '',
-            syncedToJira: false,
-            createdAt: (log.payload['createdAt'] as string) ?? new Date().toISOString(),
-          },
-        });
-        return { status: SyncStatus.SUCCESS, reason: null };
-      }
-    }
-
-    throw new ForbiddenException('This sync log cannot be retried');
   }
 }

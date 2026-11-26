@@ -19,9 +19,10 @@ const BOARD = {
 };
 
 function setup() {
-  const links = { query: jest.fn().mockResolvedValue([]) };
+  const links = { query: jest.fn().mockResolvedValue([]), findOne: jest.fn() };
   const logs = { query: jest.fn().mockResolvedValue([]) };
   const conflicts = {
+    findOne: jest.fn().mockResolvedValue(null),
     save: jest.fn((row: Record<string, unknown>) => Promise.resolve({ id: 'conflict-1', ...row })),
   };
   const boards = {
@@ -159,6 +160,83 @@ describe('JiraSyncConflictDetector', () => {
       jiraIssueKey: 'KAN-1',
       boardStatus: 'Done',
       jiraStatus: 'In Progress',
+    });
+  });
+  it('logs a conflict only once for the same move (inbound and queued outbound both see it)', async () => {
+    const ctx = setup();
+    ctx.conflicts.findOne.mockResolvedValue({ id: 'conflict-0' });
+
+    const row = await ctx.detector.record({
+      ...REF,
+      board: { columnId: 'col-done', at: at(0) },
+      jira: { columnId: 'col-doing', statusName: 'In Progress', at: at(1_000) },
+    });
+
+    expect(row).toEqual({ id: 'conflict-0' });
+    expect(ctx.conflicts.save).not.toHaveBeenCalled();
+    expect(ctx.boards.notifyBoardAdmins).not.toHaveBeenCalled();
+  });
+
+  describe('hasConflictingJiraChange', () => {
+    const move = { columnId: 'col-done', at: at(0) };
+
+    it('is true for a recorded Jira change to another column within the window', async () => {
+      const ctx = setup();
+      ctx.links.findOne.mockResolvedValue({
+        id: 'link-1',
+        lastJiraChangeAt: at(2_000),
+        lastJiraColumnId: 'col-doing',
+      });
+      await expect(ctx.detector.hasConflictingJiraChange('link-1', move)).resolves.toBe(true);
+    });
+
+    it('is false without a recorded Jira change or when it is outside the window', async () => {
+      const ctx = setup();
+      ctx.links.findOne.mockResolvedValue(null);
+      await expect(ctx.detector.hasConflictingJiraChange('link-1', move)).resolves.toBe(false);
+      ctx.links.findOne.mockResolvedValue({
+        id: 'link-1',
+        lastJiraChangeAt: at(60_000),
+        lastJiraColumnId: 'col-doing',
+      });
+      await expect(ctx.detector.hasConflictingJiraChange('link-1', move)).resolves.toBe(false);
+    });
+  });
+
+  describe('overtakenBy (a move that waited in the outbox)', () => {
+    const jiraRow = (ms: number, columnId = 'col-doing') => ({
+      id: 'link-1',
+      lastJiraChangeAt: at(ms),
+      lastJiraColumnId: columnId,
+      lastJiraStatusName: 'In Progress',
+    });
+    const move = { columnId: 'col-done', at: at(0) };
+
+    it('is overtaken by a Jira change to another column hours after the move', async () => {
+      const ctx = setup();
+      ctx.links.findOne.mockResolvedValue(jiraRow(3 * 3_600_000));
+      const lost = await ctx.detector.overtakenBy(REF, move);
+      expect(lost?.jira).toEqual({
+        columnId: 'col-doing',
+        statusName: 'In Progress',
+        at: at(3 * 3_600_000),
+      });
+    });
+
+    it('is overtaken by a Jira change up to 5 s before the move', async () => {
+      const ctx = setup();
+      ctx.links.findOne.mockResolvedValue(jiraRow(-5_000));
+      await expect(ctx.detector.overtakenBy(REF, move)).resolves.not.toBeNull();
+    });
+
+    it('is not overtaken by an older Jira change, the same column, or no Jira change', async () => {
+      const ctx = setup();
+      ctx.links.findOne.mockResolvedValue(jiraRow(-5_001));
+      await expect(ctx.detector.overtakenBy(REF, move)).resolves.toBeNull();
+      ctx.links.findOne.mockResolvedValue(jiraRow(1_000, 'col-done'));
+      await expect(ctx.detector.overtakenBy(REF, move)).resolves.toBeNull();
+      ctx.links.findOne.mockResolvedValue({ id: 'link-1', lastJiraChangeAt: null });
+      await expect(ctx.detector.overtakenBy(REF, move)).resolves.toBeNull();
     });
   });
 });

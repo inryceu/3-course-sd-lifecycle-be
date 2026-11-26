@@ -1270,6 +1270,8 @@ paths:
         A conflict is a BoardSync user move of a linked card and a Jira status change of the same
         issue at most 5 seconds apart (either order) that put the card in different columns.
         Jira wins by default (`resolution: jira`, `resolvedAt: null`) until an admin resolves it.
+        A move that waited in the outbox while Jira was unreachable also conflicts with any later
+        Jira status change of the issue to another column: the stale move is dropped, not sent.
       parameters:
         - $ref: '#/components/parameters/BoardIdQuery'
         - $ref: '#/components/parameters/Limit'
@@ -1374,6 +1376,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/JiraSyncLogPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1381,16 +1385,86 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /jira/sync-logs/{logId}/retry:
+  /jira/sync/outbox:
+    get:
+      tags: [jira]
+      operationId: listJiraSyncOutbox
+      summary: Queued outbound Jira changes of a board, newest first, dead letters by default (Admin)
+      description: |
+        A user move of a linked card is stored in the durable `sync_outbox` in the same transaction
+        as the move and sent to Jira by a background worker. Failed attempts are retried with capped
+        exponential backoff (see `OUTBOX_*` in the README) and per-card order is kept. A row that
+        keeps failing for `OUTBOX_MAX_AGE_HOURS` (default 24) or hits a permanent error becomes
+        `DEAD`, the board Admins get a `jira.sync.failed` notification, and the row blocks later
+        rows of the same card until it is requeued.
+      parameters:
+        - $ref: '#/components/parameters/BoardIdQuery'
+        - name: status
+          in: query
+          description: Row status to list
+          schema:
+            type: string
+            enum: [PENDING, IN_PROGRESS, SENT, DEAD]
+            default: DEAD
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of outbox rows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /jira/sync/outbox/requeue-dead:
     post:
       tags: [jira]
-      operationId: retryJiraSyncLog
-      summary: Retry a failed sync log (Admin)
+      operationId: requeueDeadJiraSyncOutbox
+      summary: Requeue every dead outbox row of a board that is not blocked (Admin)
       description: |
-        Retries a failed outbound status move or comment sync. Only logs with status FAILED
-        and outcome !== unknown can be retried.
+        Bulk form of the single requeue, for the end of a long Jira outage. Rows are handled oldest
+        first, at most 500 per call; a row that an earlier row of the same card still blocks is
+        counted in `skipped` (call again once the earlier row was sent).
       parameters:
-        - name: logId
+        - $ref: '#/components/parameters/BoardIdQuery'
+      responses:
+        '200':
+          description: How many dead rows were requeued and how many were left
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxRequeueSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /jira/sync/outbox/{outboxId}/requeue:
+    post:
+      tags: [jira]
+      operationId: requeueJiraSyncOutboxRow
+      summary: Requeue one dead outbox row (Admin)
+      description: |
+        Sets the row back to `PENDING` with a fresh retry budget. A newer pending row of the same
+        card is merged into it, so the latest move wins.
+      parameters:
+        - name: outboxId
           in: path
           required: true
           schema:
@@ -1398,11 +1472,11 @@ paths:
             format: uuid
       responses:
         '200':
-          description: The retry result
+          description: The requeued row
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JiraSyncRetryResult'
+                $ref: '#/components/schemas/OutboxEntry'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1412,11 +1486,13 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: The log cannot be retried (wrong status, missing data, or already retried)
+          description: The row is not dead, or an earlier row of the same card blocks it
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /notifications:
     get:
@@ -2051,6 +2127,54 @@ components:
           nullable: true
         requiresReconnect:
           type: boolean
+          description: |
+            True only when the refresh token is gone (rejected with invalid_grant) and the access
+            token has expired. An expired access token alone is refreshed on the next call.
+    JiraSyncDirection:
+      type: string
+      enum: [TO_JIRA, FROM_JIRA]
+    JiraSyncStatus:
+      type: string
+      enum: [SUCCESS, FAILED, CONFLICT]
+    JiraSyncLog:
+      type: object
+      required: [id, boardId, direction, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        boardId:
+          type: string
+          format: uuid
+        direction:
+          $ref: '#/components/schemas/JiraSyncDirection'
+        status:
+          $ref: '#/components/schemas/JiraSyncStatus'
+        payload:
+          type: object
+          nullable: true
+          additionalProperties: true
+        errorMessage:
+          type: string
+          nullable: true
+        mappingId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    JiraSyncLogPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/JiraSyncLog'
+        nextCursor:
+          type: string
+          nullable: true
     JiraImportRequest:
       type: object
       required: [boardId]
@@ -2239,60 +2363,82 @@ components:
           type: string
           nullable: true
 
-    JiraSyncDirection:
-      type: string
-      enum: [TO_JIRA, FROM_JIRA]
-    JiraSyncStatus:
-      type: string
-      enum: [SUCCESS, FAILED, CONFLICT]
-    JiraSyncLog:
+    OutboxEntry:
       type: object
-      required: [id, boardId, direction, status, createdAt]
+      required:
+        [id, sequence, operation, cardId, status, attempts, availableAt, createdAt, updatedAt]
       properties:
         id:
           type: string
           format: uuid
-        boardId:
+        sequence:
+          type: string
+          description: Global order of the row (a bigint as a string); per-card order follows it
+        operation:
+          type: string
+          example: TRANSITION_ISSUE
+        cardId:
           type: string
           format: uuid
-        direction:
-          $ref: '#/components/schemas/JiraSyncDirection'
+        jiraIssueKey:
+          type: string
+          nullable: true
+        targetColumnId:
+          type: string
+          nullable: true
+          description: Column the move should put the issue's status in
         status:
-          $ref: '#/components/schemas/JiraSyncStatus'
-        payload:
-          type: object
-          nullable: true
-          additionalProperties: true
-        errorMessage:
+          type: string
+          enum: [PENDING, IN_PROGRESS, SENT, DEAD]
+        attempts:
+          type: integer
+        errorCode:
           type: string
           nullable: true
-        mappingId:
+          example: attempts_exhausted
+        lastError:
           type: string
-          format: uuid
           nullable: true
+          description: Sanitized, single line, never a Jira response body
+        availableAt:
+          type: string
+          format: date-time
         createdAt:
           type: string
           format: date-time
-    JiraSyncLogPage:
+        updatedAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        deadAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    OutboxPage:
       type: object
       required: [items]
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/JiraSyncLog'
+            $ref: '#/components/schemas/OutboxEntry'
         nextCursor:
           type: string
           nullable: true
-    JiraSyncRetryResult:
+
+    OutboxRequeueSummary:
       type: object
-      required: [status, reason]
+      required: [requeued, skipped]
       properties:
-        status:
-          $ref: '#/components/schemas/JiraSyncStatus'
-        reason:
-          type: string
-          nullable: true
+        requeued:
+          type: integer
+        skipped:
+          type: integer
+          description: Dead rows left as they are because an earlier row of the card blocks them
 
     Notification:
       type: object
@@ -2303,10 +2449,15 @@ components:
           format: uuid
         type:
           type: string
-          enum: [deadline.reminder, jira.conflict, board.invited]
+          enum: [deadline.reminder, jira.conflict, board.invited, jira.sync.failed]
         payload:
           type: object
           additionalProperties: true
+          description: |
+            Per type. `jira.sync.failed` (a queued Jira move was dead-lettered; sent to the board
+            Admins and to the member who moved the card, also through `notification.created`)
+            carries `outboxId`, `boardId`, `cardId`, `jiraIssueKey`, `operation`, `attempts` and
+            `errorCode`; never tokens or raw Jira bodies.
         readAt:
           type: string
           format: date-time

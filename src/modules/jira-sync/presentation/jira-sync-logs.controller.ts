@@ -1,20 +1,7 @@
-import {
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Param,
-  ParseUUIDPipe,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../auth';
-import {
-  JiraSyncLogsService,
-  RetryResult,
-  SyncLogPageView,
-} from '../application/jira-sync-logs.service';
+import { JiraSyncLogsService, SyncLogPageView } from '../application/jira-sync-logs.service';
 import { ListSyncLogsQueryDto } from './dto/jira.dto';
 import { SyncStatus } from '../infrastructure/persistence/sync-log.entity';
 
@@ -41,19 +28,5 @@ export class JiraSyncLogsController {
       query.cursor,
       query.status as SyncStatus | undefined,
     );
-  }
-
-  @Post(':logId/retry')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Retry a failed sync log (Admin)',
-    description:
-      'Retries a failed outbound status move or comment sync. Only logs with status FAILED and outcome !== unknown can be retried.',
-  })
-  retry(
-    @CurrentUser('id') userId: string,
-    @Param('logId', ParseUUIDPipe) logId: string,
-  ): Promise<RetryResult> {
-    return this.syncLogs.retry(userId, logId);
   }
 }

@@ -6,6 +6,7 @@ import { BoardColumnEntity } from '../infrastructure/persistence/column.entity';
 import { BoardAccessService } from './board-access.service';
 import { CardsService } from './cards.service';
 import { EventPublisher } from '../../../common/events';
+import { OutboxService } from '../../../common/outbox/outbox.service';
 
 describe('CardsService - Move and Ordering', () => {
   it('throws BadRequest if target position is out of bounds', async () => {
@@ -35,6 +36,7 @@ describe('CardsService - Move and Ordering', () => {
       {} as Repository<BoardColumnEntity>,
       access,
       { publish: jest.fn() } as unknown as EventPublisher,
+      { enqueue: jest.fn() } as unknown as OutboxService,
     );
 
     const cardMock = { boardId: 'b1' };
@@ -123,6 +125,7 @@ describe('CardsService - Move and Ordering', () => {
       {} as Repository<BoardColumnEntity>,
       {} as BoardAccessService,
       publisher as unknown as EventPublisher,
+      { enqueue: jest.fn() } as unknown as OutboxService,
     );
     return { service, publisher, manager, current };
   }
@@ -254,6 +257,7 @@ describe('CardsService - Move and Ordering', () => {
       {} as Repository<BoardColumnEntity>,
       access,
       publisher as unknown as EventPublisher,
+      { enqueue: jest.fn() } as unknown as OutboxService,
     );
 
     const cardMock = { boardId: 'b1', columnId: 'col-1', position: 1, labels: [] };

@@ -35,6 +35,7 @@ Code that no single module may own and that depends on **no** module:
 | `common/events/` | typed domain events, `EVENT_PUBLISHER` port, `EventBusModule` |
 | `common/ports/` | ports implemented by one module and consumed by another that must not depend on it (`BOARD_ACCESS`) |
 | `common/decorators/` | `@Public()` |
+| `common/outbox/` | durable `sync_outbox` table, `OutboxService`, `OutboxWorker`, handler registry and retry/backoff policy (T-35). Generic: it knows operations and payloads, not Jira. `boards` writes rows through `OutboxService.enqueue` inside its transaction; `jira-sync` registers the `TRANSITION_ISSUE` handler. It imports no module, so it fits the kernel rule: `boards` and `jira-sync` both depend on it and not on each other's internals |
 
 ## Public API
 
