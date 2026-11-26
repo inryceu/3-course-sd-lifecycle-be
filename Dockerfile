@@ -10,7 +10,7 @@
 # -----------------------------------------------------------------------------
 # BASE STAGE - Shared dependencies
 # -----------------------------------------------------------------------------
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 
 # Install pnpm via corepack
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
@@ -72,7 +72,7 @@ CMD ["pnpm", "start:dev"]
 # -----------------------------------------------------------------------------
 # PRODUCTION STAGE - Minimal runtime image
 # -----------------------------------------------------------------------------
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 # Install pnpm for potential runtime needs
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate

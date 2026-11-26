@@ -5,10 +5,11 @@ updates:
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 10
+    # A dependency goes to the first group it matches, so the two groups are
+    # kept mutually exclusive by dependency-type.
     groups:
       production-dependencies:
-        patterns:
-          - "*"
+        dependency-type: "production"
         update-types:
           - "minor"
           - "patch"
@@ -19,13 +20,12 @@ updates:
           - "patch"
     ignore:
       - dependency-name: "*"
-        update-types: ["major"]
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
-    reviewers:
-      - "Kyrylo"
+    # Reviewers come from .github/CODEOWNERS (the `reviewers` key is deprecated).
     assignees:
-      - "Kyrylo"
+      - "KyryloBB"
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(deps:dev)"
@@ -40,11 +40,13 @@ updates:
       docker-images:
         patterns:
           - "*"
+    ignore:
+      # Node stays on the LTS line pinned in .nvmrc; a major bump is a deliberate change.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
-    reviewers:
-      - "Kyrylo"
     assignees:
-      - "Kyrylo"
+      - "KyryloBB"
     commit-message:
       prefix: "chore(deps:docker)"

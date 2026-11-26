@@ -7,9 +7,9 @@ See `proposal.md` for the "why" and "what". Current state (from codebase explora
 - Both repos already declare `packageManager: "pnpm@9.0.0"` and use `pnpm-lock.yaml`.
 - Both Dockerfiles use `node:20-alpine` with `corepack prepare pnpm@9.0.0`.
 - Backend CI uses `pnpm/action-setup@v3`, pnpm 9.0.0, Node 20, `pnpm install --frozen-lockfile` across lint/typecheck/test/build/docker jobs.
-- Frontend has no `.github/` directory — no CI at all, despite its README referencing `ci.yml`.
+- Frontend has `ci.yml` and `e2e.yml` (KAN-51, KAN-58), so it gets the same audit job.
 - Backend `engines.node` is `">=20.0.0"`; no `.nvmrc` exists in either repo.
-- Backend has `"audit": "pnpm audit"` script (not in CI); `EXCEPTIONS.md` documents 47 accepted findings (18 High, 21 Moderate, 8 Low), 0 Critical.
+- Backend has `"audit": "pnpm audit"` script (not in CI); `EXCEPTIONS.md` documents the accepted findings (counts refreshed in this change), 0 Critical.
 - `depcheck` is not installed or used anywhere.
 - `pnpm-workspace.yaml` does not exist — single repo per project, frontend is a separate repository.
 - Shared tooling (TS ^5.3.3, ESLint ^8.56.0, Prettier ^3.1.1, @typescript-eslint ^6.17.0) is identical across both repos.
@@ -22,14 +22,13 @@ See `proposal.md` for the "why" and "what". Current state (from codebase explora
 - Pin Node LTS 20 exact patch in `engines` and `.nvmrc` in both repos; keep shared tooling versions aligned.
 - Add `pnpm audit --audit-level=critical` as a standalone CI job on backend (passes today, fails on new critical findings only).
 - Install `depcheck`, run it, and remove verified unused dependencies from backend.
-- Sync equivalent config (engines pin, `.nvmrc`, unused-dep review) to frontend without adding frontend CI.
+- Sync equivalent config (engines range, `.nvmrc`, Dependabot, audit job, unused-dep review) to the frontend.
 
 **Non-Goals:**
 
-- Do not add frontend CI (out of scope per decision).
 - Do not pin Dockerfile base image to an exact Node patch (keep `node:20-alpine` floating).
 - Do not change any application code, API contracts, or spec-level behavior (`skip_specs: true`).
-- Do not remove or alter existing `EXCEPTIONS.md` entries; critical-only audit does not block on the 47 documented findings.
+- Do not remove or alter existing `EXCEPTIONS.md` entries; critical-only audit does not block on the documented non-critical findings.
 
 ## Decisions
 
@@ -49,13 +48,13 @@ See `proposal.md` for the "why" and "what". Current state (from codebase explora
 **Alternatives considered:**
 - Inline step in each job — rejected; redundant, slows every job.
 
-### 3. Node 20 exact LTS patch pin in `engines` + `.nvmrc`, both repos
+### 3. Node 22 LTS pin (`.nvmrc` = `22`, `engines` range `>=22 <23`), both repos
 
-**Rationale:** `engines.node` currently `">=20.0.0"` is a range; CI and Docker both use Node 20. Pinning the exact LTS patch in both files plus `.nvmrc` ensures local development matches CI and production. Dockerfile stays `node:20-alpine` (floating) per decision.
+**Rationale:** Node 20 reached end-of-life on 30 April 2026. Node 22 is a supported LTS line. One major in `.nvmrc`, `engines`, CI (`node-version-file: .nvmrc`) and `node:22-alpine` keeps local, CI and production on the same line without an exact-patch match that warns on every install.
 
 **Alternatives considered:**
-- Keep `>=20.0.0` range only — rejected; no exact pin means local/CI/production can drift across patch versions.
-- Pin Node 22 — rejected; project standardizes on Node 20 LTS already in CI and Dockerfiles.
+- Keep Node 20 — rejected; end-of-life, no more security fixes.
+- Exact patch pin (`22.x.y`) — rejected; warns for anyone on another 22.x.
 
 ### 4. depcheck: install → run → remove verified unused
 

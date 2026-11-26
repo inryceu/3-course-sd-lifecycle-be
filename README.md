@@ -56,7 +56,7 @@ TypeScript, NestJS 10, TypeORM 0.3, PostgreSQL 16, Socket.IO, Jest + Supertest, 
 
 ## Getting started
 
-Requirements: Node.js 20+, pnpm 9, Docker (for PostgreSQL).
+Requirements: Node.js 22 LTS (see `.nvmrc`, `nvm use`), pnpm 9 (via corepack), Docker (for PostgreSQL).
 
 ```bash
 pnpm install
@@ -96,6 +96,14 @@ Useful commands:
 docker run -d --name bs-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=boardsync_test -p 5434:5432 postgres:16-alpine
 DATABASE_HOST=127.0.0.1 DATABASE_PORT=5434 pnpm test:e2e
 ```
+
+## Dependencies
+
+- **pnpm only** (`packageManager` in `package.json`, enabled through corepack). Never run `npm install` or `yarn`; commit only `pnpm-lock.yaml`. CI and Docker use `pnpm install --frozen-lockfile`.
+- **Node 22 LTS**: `.nvmrc` is the single source (`nvm use`); `engines` is `>=22 <23`, CI reads `.nvmrc` and the Dockerfile uses `node:22-alpine`. Moving to another Node major means changing all of them in one PR.
+- **Dependabot** (`.github/dependabot.yml`) opens monthly PRs: minor/patch updates grouped into production and development PRs, major versions ignored (upgrade them deliberately), Docker `node` majors ignored. Review them like any PR; nothing is auto-merged.
+- **Audit policy**: the `Dependency Audit` job runs `pnpm audit --audit-level=critical` on every push/PR and weekly; it is a required check. Lower severities are tracked in `EXCEPTIONS.md` and re-reviewed on the date listed there.
+- **Unused dependencies**: `pnpm deps:check` (depcheck, config in `.depcheckrc`).
 
 ## Run the whole system (database + backend + frontend)
 
