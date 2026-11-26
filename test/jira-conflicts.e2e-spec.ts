@@ -7,6 +7,7 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
+import { OUTBOX_CONFIG, loadOutboxConfig } from '../src/common/outbox/outbox.config';
 import { DomainEventOf } from '../src/common/events';
 import { BoardEntity } from '../src/modules/boards/infrastructure/persistence/board.entity';
 import { CardEntity } from '../src/modules/boards/infrastructure/persistence/card.entity';
@@ -64,14 +65,18 @@ class FakeJira {
   readonly statuses = new Map<string, JiraStatus>();
   readonly doTransitionCalls: DoTransitionInput[] = [];
   doTransitionError: Error | null = null;
+  /** Set to simulate an outage: every read fails. */
+  getIssueError: Error | null = null;
 
   reset(): void {
     this.statuses.clear();
+    this.getIssueError = null;
     this.doTransitionCalls.length = 0;
     this.doTransitionError = null;
   }
 
   getIssue(input: GetIssueInput): Promise<GetIssueResult> {
+    if (this.getIssueError) return Promise.reject(this.getIssueError);
     const current = this.statuses.get(input.issueIdOrKey) ?? TODO;
     return Promise.resolve({ id: '1', key: input.issueIdOrKey, status: current });
   }
@@ -255,6 +260,8 @@ describe('Jira sync conflicts (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(JIRA_GATEWAY)
       .useValue(jira)
+      .overrideProvider(OUTBOX_CONFIG)
+      .useValue({ ...loadOutboxConfig(), pollIntervalSeconds: 1 })
       .compile();
     app = moduleRef.createNestApplication({ rawBody: true });
     configureApp(app);
@@ -358,6 +365,92 @@ describe('Jira sync conflicts (e2e)', () => {
 
       await expect(conflicts(board.id)).resolves.toHaveLength(0);
       await expect(columnOf(card.id)).resolves.toBe(done);
+    });
+  });
+
+  describe('a move queued while Jira is unreachable (outbox)', () => {
+    const outboxRow = async (cardId: string) =>
+      (
+        await dataSource.query<Array<{ status: string; result: Record<string, unknown> | null }>>(
+          `SELECT status, result FROM sync_outbox WHERE card_id = $1 ORDER BY sequence DESC LIMIT 1`,
+          [cardId],
+        )
+      )[0];
+
+    const waitForRowStatus = async (cardId: string, status: string) => {
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        if ((await outboxRow(cardId))?.status === status) return;
+        await sleep(100);
+      }
+      throw new Error(`Outbox row of card ${cardId} did not reach ${status}`);
+    };
+
+    /** Jira down: the user's move is queued and its first attempt fails. */
+    const queuedMoveDuringOutage = async () => {
+      const linked = await linkedCard();
+      jira.getIssueError = new JiraServerError(503, 1, 1);
+      await move(linked.card.id, linked.done);
+      await waitForLogs(linked.card.id, 1);
+      expect(jira.doTransitionCalls).toHaveLength(0);
+      return linked;
+    };
+
+    it('logs the conflict and sends nothing when Jira changed the issue within 5 s of the move', async () => {
+      const { board, card, issueKey, doing, done } = await queuedMoveDuringOutage();
+
+      jira.statuses.set(issueKey, DOING);
+      await deliver(issueKey, DOING); // someone set In Progress in Jira during the outage
+      jira.getIssueError = null; // Jira is back
+      await waitForRowStatus(card.id, 'SENT');
+
+      expect(jira.doTransitionCalls).toHaveLength(0);
+      await expect(columnOf(card.id)).resolves.toBe(doing);
+      const items = await conflicts(board.id);
+      expect(items).toHaveLength(1); // seen by the webhook and by the retry, logged once
+      expect(items[0]).toMatchObject({
+        boardColumnId: done,
+        jiraColumnId: doing,
+        resolution: 'jira',
+      });
+      const rows = await logsFor(card.id);
+      expect(rows[rows.length - 1]).toMatchObject({
+        status: SyncStatus.CONFLICT,
+        payload: expect.objectContaining({ outcome: 'conflict' }) as unknown,
+      });
+      expect(notificationEvents.filter((e) => e.boardId === board.id)).toHaveLength(1);
+    });
+
+    it('drops a stale move that a much later Jira change overtook (Jira wins)', async () => {
+      const { board, card, issueKey, doing, done } = await queuedMoveDuringOutage();
+
+      jira.statuses.set(issueKey, DOING);
+      await deliver(issueKey, DOING, Date.now() + 60_000); // far outside the 5 s window
+      await expect(conflicts(board.id)).resolves.toHaveLength(0);
+      jira.getIssueError = null;
+      await waitForRowStatus(card.id, 'SENT');
+
+      expect(jira.doTransitionCalls).toHaveLength(0);
+      await expect(columnOf(card.id)).resolves.toBe(doing);
+      const items = await conflicts(board.id);
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ boardColumnId: done, jiraColumnId: doing });
+      expect(await outboxRow(card.id)).toMatchObject({
+        status: 'SENT',
+        result: expect.objectContaining({ outcome: 'conflict' }) as unknown,
+      });
+    });
+
+    it('still sends the move after the outage when Jira did not change meanwhile', async () => {
+      const { board, card, issueKey, done } = await queuedMoveDuringOutage();
+
+      jira.getIssueError = null;
+      await waitForRowStatus(card.id, 'SENT');
+
+      expect(jira.doTransitionCalls).toHaveLength(1);
+      expect(jira.statuses.get(issueKey)).toBe(DONE);
+      await expect(columnOf(card.id)).resolves.toBe(done);
+      await expect(conflicts(board.id)).resolves.toHaveLength(0);
     });
   });
 

@@ -50,6 +50,7 @@ function setup(role: BoardRole | null = BoardRole.ADMIN) {
     upsertCardFromExternal: jest.fn(),
     moveCardFromExternal: jest.fn(),
     notifyBoardAdmins: jest.fn(),
+    notifyUser: jest.fn(),
     markCommentSynced: jest.fn(),
   };
   const atlassian: jest.Mocked<AtlassianOAuth> = {

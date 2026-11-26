@@ -115,6 +115,18 @@ export const validationSchema = Joi.object({
   // Realtime heartbeat in milliseconds (Socket.IO defaults)
   REALTIME_PING_INTERVAL_MS: Joi.number().integer().positive().default(25000),
   REALTIME_PING_TIMEOUT_MS: Joi.number().integer().positive().default(20000),
+
+  // Jira sync outbox (T-35). Defaults mirror src/common/outbox/outbox.config.ts, which reads them.
+  // 0 disables the background poll loop (tests drive the worker directly).
+  OUTBOX_POLL_INTERVAL_SECONDS: Joi.number().integer().min(0).default(5),
+  OUTBOX_BATCH_SIZE: Joi.number().integer().min(1).default(20),
+  OUTBOX_CONCURRENCY: Joi.number().integer().min(1).default(5),
+  OUTBOX_MAX_ATTEMPTS: Joi.number().integer().min(1).default(10000),
+  OUTBOX_MAX_AGE_HOURS: Joi.number().integer().min(1).default(24),
+  OUTBOX_BASE_DELAY_MS: Joi.number().integer().min(1).default(1000),
+  OUTBOX_MAX_DELAY_MS: Joi.number().integer().min(1).default(45000),
+  OUTBOX_LOCK_STALE_MS: Joi.number().integer().min(1).default(30000),
+  OUTBOX_SENT_RETENTION_DAYS: Joi.number().integer().min(1).default(7),
 }).required();
 
 /** Converts a Joi validation error to one readable message listing every problem. */

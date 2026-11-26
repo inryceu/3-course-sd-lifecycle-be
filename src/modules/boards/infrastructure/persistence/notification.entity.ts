@@ -1,7 +1,8 @@
 import { Column, Entity, Index } from 'typeorm';
 import { BaseEntity } from '../../../../common/entities/base.entity';
 
-export type NotificationType = 'deadline.reminder' | 'jira.conflict' | 'board.invited';
+export type NotificationType =
+  'deadline.reminder' | 'jira.conflict' | 'board.invited' | 'jira.sync.failed';
 
 /** In-app notification of one user. `recipientId` is a user id (auth module), not a foreign key. */
 @Entity('notifications')

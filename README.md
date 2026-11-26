@@ -56,7 +56,7 @@ TypeScript, NestJS 10, TypeORM 0.3, PostgreSQL 16, Socket.IO, Jest + Supertest, 
 
 ## Getting started
 
-Requirements: Node.js 20+, pnpm 9, Docker (for PostgreSQL).
+Requirements: Node.js 22 LTS (see `.nvmrc`, `nvm use`), pnpm 9 (via corepack), Docker (for PostgreSQL).
 
 ```bash
 pnpm install
@@ -96,6 +96,29 @@ Useful commands:
 docker run -d --name bs-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=boardsync_test -p 5434:5432 postgres:16-alpine
 DATABASE_HOST=127.0.0.1 DATABASE_PORT=5434 pnpm test:e2e
 ```
+
+### API tests (Postman/Newman)
+
+`test/postman/` holds a Postman collection (`boardsync.postman_collection.json`) and two environments (`local` = http://localhost:8090/api/v1, `ci` = http://localhost:8080/api/v1). It walks the main flows (register, login, me; a board with three default columns; columns and cards; inviting a member and the Viewer restrictions; 401/403/404/400 cases) and asserts the status code and the OpenAPI schema of every response.
+
+The schemas are not copied into the collection: `scripts/run-api-tests.mjs` builds them from `docs/api/openapi.yaml` on each run, so a contract change cannot leave the tests stale. Run the collection through the script, not by importing it into the Postman app.
+
+```bash
+# with the full stack up (next section)
+pnpm test:api                  # local environment, :8090
+pnpm test:api -- --env ci      # ci environment, :8080
+API_BASE_URL=http://host:port/api/v1 pnpm test:api   # any other URL
+```
+
+The console shows the CLI report; the JUnit file is written to `test-results/api-tests.xml`. A run registers 3 users with unique e-mails and deletes its board. The production limit is 5 registrations per 5 minutes per client, so a second run inside that window gets 429: start the stack with `RATE_LIMIT_REGISTER=1000` for repeated runs. CI does this in `.github/workflows/api-tests.yml`.
+
+## Dependencies
+
+- **pnpm only** (`packageManager` in `package.json`, enabled through corepack). Never run `npm install` or `yarn`; commit only `pnpm-lock.yaml`. CI and Docker use `pnpm install --frozen-lockfile`.
+- **Node 22 LTS**: `.nvmrc` is the single source (`nvm use`); `engines` is `>=22 <23`, CI reads `.nvmrc` and the Dockerfile uses `node:22-alpine`. Moving to another Node major means changing all of them in one PR.
+- **Dependabot** (`.github/dependabot.yml`) opens monthly PRs: minor/patch updates grouped into production and development PRs, major versions ignored (upgrade them deliberately), Docker `node` majors ignored. Review them like any PR; nothing is auto-merged.
+- **Audit policy**: the `Dependency Audit` job runs `pnpm audit --audit-level=critical` on every push/PR and weekly; it is a required check. Lower severities are tracked in `EXCEPTIONS.md` and re-reviewed on the date listed there.
+- **Unused dependencies**: `pnpm deps:check` (depcheck, config in `.depcheckrc`).
 
 ## Run the whole system (database + backend + frontend)
 
@@ -171,6 +194,11 @@ Every variable is validated at startup (`src/config/validation.schema.ts`); the 
 | `JIRA_AUTH_BASE_URL`, `JIRA_API_BASE_URL` | no | Atlassian endpoints (override for tests; `https` in production) |
 | `TOKEN_ENCRYPTION_KEY` | yes | 64 hex characters (32 bytes) for AES-256-GCM |
 | `WEBHOOK_SECRET` | yes | at least 32 characters |
+| `OUTBOX_MAX_AGE_HOURS` | no (`24`) | a queued Jira move that keeps failing this long is dead-lettered (Admins notified; `POST /jira/sync/outbox/requeue-dead` re-queues them) |
+| `OUTBOX_BASE_DELAY_MS`, `OUTBOX_MAX_DELAY_MS` | no (`1000`, `45000`) | retry backoff: exponential with full jitter, floor and cap; the cap is also the longest wait after Jira is back, so it must stay below the 1-minute drain target (45 s + 5 s poll + attempt) |
+| `OUTBOX_MAX_ATTEMPTS` | no (`10000`) | safety cap on attempts per row (the age limit normally comes first) |
+| `OUTBOX_POLL_INTERVAL_SECONDS`, `OUTBOX_BATCH_SIZE`, `OUTBOX_CONCURRENCY` | no (`5`, `20`, `5`) | outbox worker poll period (`0` = off), rows claimed per round, parallel sends |
+| `OUTBOX_LOCK_STALE_MS`, `OUTBOX_SENT_RETENTION_DAYS` | no (`30000`, `7`) | a claim older than this is reclaimed; how long `SENT` rows are kept |
 
 ## API documentation and user guide
 

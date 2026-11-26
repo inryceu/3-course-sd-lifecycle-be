@@ -13,6 +13,7 @@ import { BoardsFacadeService } from './boards-facade.service';
 import { BoardsService } from './boards.service';
 import { CardsService } from './cards.service';
 import { NotificationsService } from './notifications.service';
+import { OutboxService } from '../../../common/outbox/outbox.service';
 import { ColumnsService } from './columns.service';
 import { CommentsService } from './comments.service';
 
@@ -186,6 +187,7 @@ describe('CardsService', () => {
       columnRepo(),
       access(BoardRole.VIEWER),
       events(),
+      { enqueue: jest.fn() } as unknown as OutboxService,
     );
 
     await expect(service.create('u', 'col', { title: 'T' })).rejects.toBeInstanceOf(
@@ -206,6 +208,7 @@ describe('CardsService', () => {
       columnRepo(),
       access(BoardRole.MEMBER),
       publisher,
+      { enqueue: jest.fn() } as unknown as OutboxService,
     );
 
     await expect(service.create('u', 'col', { title: 'T' })).rejects.toThrow('database down');
@@ -220,6 +223,7 @@ describe('CardsService', () => {
       columnRepo(),
       access(BoardRole.MEMBER),
       publisher,
+      { enqueue: jest.fn() } as unknown as OutboxService,
     );
 
     await expect(service.move('u', 'c1', { columnId: 'col', position: 0 })).rejects.toThrow(
@@ -235,6 +239,7 @@ describe('CardsService', () => {
       columnRepo(),
       access(BoardRole.MEMBER),
       events(),
+      { enqueue: jest.fn() } as unknown as OutboxService,
     );
     await expect(service.get('u', 'missing')).rejects.toBeInstanceOf(NotFoundException);
   });
@@ -277,7 +282,7 @@ describe('BoardsFacadeService', () => {
         update: jest.fn().mockResolvedValue({ affected: 1 }),
       }),
       repo<BoardColumnEntity>({ find: jest.fn().mockResolvedValue(columns) }),
-      {} as NotificationsService,
+      { notifyAdmins: jest.fn(), notifyUser: jest.fn() } as unknown as NotificationsService,
     );
 
   it('exposes the member role via access service', async () => {

@@ -193,6 +193,37 @@ describe('Configuration validation schema', () => {
     );
   });
 
+  describe('outbox', () => {
+    it('defaults the retry budget to 24 hours, delays 1 s to 45 s, poll every 5 s', () => {
+      const { value } = validate(validConfig);
+      expect(value.OUTBOX_MAX_AGE_HOURS).toBe(24);
+      expect(value.OUTBOX_BASE_DELAY_MS).toBe(1000);
+      expect(value.OUTBOX_MAX_DELAY_MS).toBe(45000);
+      expect(value.OUTBOX_POLL_INTERVAL_SECONDS).toBe(5);
+      expect(value.OUTBOX_BATCH_SIZE).toBe(20);
+    });
+
+    it.each([
+      'OUTBOX_BATCH_SIZE',
+      'OUTBOX_CONCURRENCY',
+      'OUTBOX_MAX_ATTEMPTS',
+      'OUTBOX_MAX_AGE_HOURS',
+      'OUTBOX_BASE_DELAY_MS',
+      'OUTBOX_MAX_DELAY_MS',
+      'OUTBOX_LOCK_STALE_MS',
+      'OUTBOX_SENT_RETENTION_DAYS',
+    ])('rejects a zero, negative or fractional %s', (key) => {
+      for (const value of [0, -1, 1.5, 'often']) {
+        expect(validate({ ...validConfig, [key]: value }).error).toBeDefined();
+      }
+    });
+
+    it('allows OUTBOX_POLL_INTERVAL_SECONDS=0 (poll loop off) but not a negative one', () => {
+      expect(validate({ ...validConfig, OUTBOX_POLL_INTERVAL_SECONDS: 0 }).error).toBeUndefined();
+      expect(validate({ ...validConfig, OUTBOX_POLL_INTERVAL_SECONDS: -1 }).error).toBeDefined();
+    });
+  });
+
   describe('encryption key and secrets', () => {
     it.each([
       ['too short', '0123456789abcdef'],
