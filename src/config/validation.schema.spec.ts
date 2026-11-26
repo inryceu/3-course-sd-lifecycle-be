@@ -42,6 +42,7 @@ describe('Configuration validation schema', () => {
       const production =
         nodeEnv === 'production'
           ? {
+              FRONTEND_URL: 'https://app.example.com',
               JIRA_REDIRECT_URI: 'https://app.example.com/jira/callback',
               JIRA_WEBHOOK_URL: 'https://app.example.com/api/v1/jira/webhook',
             }
@@ -134,6 +135,7 @@ describe('Configuration validation schema', () => {
         ...validConfig,
         NODE_ENV: 'production',
         JWT_SECRET: 'prod-jwt-secret-key-for-local-development-only-min-32-chars',
+        FRONTEND_URL: 'https://app.example.com',
         JIRA_REDIRECT_URI: 'https://app.example.com/jira/callback',
         JIRA_WEBHOOK_URL: 'https://app.example.com/api/v1/jira/webhook',
       });
@@ -258,9 +260,21 @@ describe('Configuration validation schema', () => {
     const production = {
       ...validConfig,
       NODE_ENV: 'production',
+      FRONTEND_URL: 'https://app.example.com',
       JIRA_REDIRECT_URI: 'https://app.example.com/jira/callback',
       JIRA_WEBHOOK_URL: 'https://app.example.com/api/v1/jira/webhook',
     };
+
+    it('rejects a plain-http FRONTEND_URL', () => {
+      const { error } = validate({ ...production, FRONTEND_URL: 'http://app.example.com' });
+      expect(formatValidationError(error)).toContain('FRONTEND_URL');
+    });
+
+    it('accepts an https FRONTEND_URL', () => {
+      expect(
+        validate({ ...production, FRONTEND_URL: 'https://app.example.com' }).error,
+      ).toBeUndefined();
+    });
 
     it('rejects a plain-http Jira redirect URI', () => {
       const { error } = validate({ ...production, JIRA_REDIRECT_URI: 'http://app.example.com/cb' });

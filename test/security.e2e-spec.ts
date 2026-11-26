@@ -57,6 +57,8 @@ describe('Security hardening (e2e)', () => {
       }
       for (let i = 0; i < 105; i++) {
         await request(server).get(`${PREFIX}/health`).expect(200);
+        await request(server).get(`${PREFIX}/health/alive`).expect(200);
+        await request(server).get(`${PREFIX}/health/ready`).expect(200);
       }
     });
 
