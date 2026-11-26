@@ -44,6 +44,7 @@ coverage
 .cache
 tmp
 temp
+test-results
 
 #tls
 ssl/
