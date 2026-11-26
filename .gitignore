@@ -17,6 +17,7 @@ build/
 # IDE & Editor
 .idea/
 .vscode/
+.prettierignore
 *.swp
 *.swo
 *~
