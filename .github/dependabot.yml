@@ -1,0 +1,52 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 10
+    # A dependency goes to the first group it matches, so the two groups are
+    # kept mutually exclusive by dependency-type.
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      dev-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - "dependencies"
+    # Reviewers come from .github/CODEOWNERS (the `reviewers` key is deprecated).
+    assignees:
+      - "KyryloBB"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps:dev)"
+      include: "scope"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+    ignore:
+      # Node stays on the LTS line pinned in .nvmrc; a major bump is a deliberate change.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - "dependencies"
+    assignees:
+      - "KyryloBB"
+    commit-message:
+      prefix: "chore(deps:docker)"

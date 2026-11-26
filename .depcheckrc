@@ -1,0 +1,6 @@
+# Known false positives: used by the Nest CLI, Jest typings and ts-node -r in migration scripts.
+ignores:
+  - "@nestjs/schematics"
+  - "@types/jest"
+  - "tsconfig-paths"
+  - "depcheck"

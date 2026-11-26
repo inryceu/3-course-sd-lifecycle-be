@@ -56,7 +56,7 @@ TypeScript, NestJS 10, TypeORM 0.3, PostgreSQL 16, Socket.IO, Jest + Supertest, 
 
 ## Getting started
 
-Requirements: Node.js 20+, pnpm 9, Docker (for PostgreSQL).
+Requirements: Node.js 22 LTS (see `.nvmrc`, `nvm use`), pnpm 9 (via corepack), Docker (for PostgreSQL).
 
 ```bash
 pnpm install
@@ -111,6 +111,14 @@ API_BASE_URL=http://host:port/api/v1 pnpm test:api   # any other URL
 ```
 
 The console shows the CLI report; the JUnit file is written to `test-results/api-tests.xml`. A run registers 3 users with unique e-mails and deletes its board. The production limit is 5 registrations per 5 minutes per client, so a second run inside that window gets 429: start the stack with `RATE_LIMIT_REGISTER=1000` for repeated runs. CI does this in `.github/workflows/api-tests.yml`.
+
+## Dependencies
+
+- **pnpm only** (`packageManager` in `package.json`, enabled through corepack). Never run `npm install` or `yarn`; commit only `pnpm-lock.yaml`. CI and Docker use `pnpm install --frozen-lockfile`.
+- **Node 22 LTS**: `.nvmrc` is the single source (`nvm use`); `engines` is `>=22 <23`, CI reads `.nvmrc` and the Dockerfile uses `node:22-alpine`. Moving to another Node major means changing all of them in one PR.
+- **Dependabot** (`.github/dependabot.yml`) opens monthly PRs: minor/patch updates grouped into production and development PRs, major versions ignored (upgrade them deliberately), Docker `node` majors ignored. Review them like any PR; nothing is auto-merged.
+- **Audit policy**: the `Dependency Audit` job runs `pnpm audit --audit-level=critical` on every push/PR and weekly; it is a required check. Lower severities are tracked in `EXCEPTIONS.md` and re-reviewed on the date listed there.
+- **Unused dependencies**: `pnpm deps:check` (depcheck, config in `.depcheckrc`).
 
 ## Run the whole system (database + backend + frontend)
 
