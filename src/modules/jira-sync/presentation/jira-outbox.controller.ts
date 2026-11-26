@@ -13,9 +13,10 @@ import { CurrentUser } from '../../auth';
 import {
   JiraOutboxAdminService,
   OutboxPageView,
+  OutboxRequeueSummary,
   OutboxRowView,
 } from '../application/jira-outbox-admin.service';
-import { OutboxListQueryDto } from './dto/jira-outbox.dto';
+import { OutboxBoardQueryDto, OutboxListQueryDto } from './dto/jira-outbox.dto';
 
 @ApiTags('jira')
 @ApiBearerAuth()
@@ -30,6 +31,16 @@ export class JiraOutboxController {
     @Query() query: OutboxListQueryDto,
   ): Promise<OutboxPageView> {
     return this.admin.list(userId, query.boardId, query.status, query.limit, query.cursor);
+  }
+
+  @Post('requeue-dead')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Requeue every dead outbox row of a board that is not blocked (Admin)' })
+  requeueDead(
+    @CurrentUser('id') userId: string,
+    @Query() query: OutboxBoardQueryDto,
+  ): Promise<OutboxRequeueSummary> {
+    return this.admin.requeueDead(userId, query.boardId);
   }
 
   @Post(':outboxId/requeue')

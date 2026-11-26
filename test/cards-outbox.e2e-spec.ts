@@ -8,6 +8,7 @@ import { OutboxService } from '../src/common/outbox/outbox.service';
 import { BoardEntity } from '../src/modules/boards/infrastructure/persistence/board.entity';
 import { CardEntity } from '../src/modules/boards/infrastructure/persistence/card.entity';
 import { bearer, createBoard, createCard, PREFIX, registerUser, TestUser } from './helpers';
+import { undocumentedRoute } from './openapi-skip';
 
 interface OutboxRow {
   status: string;
@@ -92,7 +93,8 @@ describe('Cards -> outbox (e2e)', () => {
     const { card, todo, done } = await setup(true);
     jest.spyOn(app.get(OutboxService), 'enqueue').mockRejectedValueOnce(new Error('boom'));
 
-    const res = await move(card.id, done.id);
+    // A forced 500 is a fault injection, not a documented response of the move operation.
+    const res = await undocumentedRoute(move(card.id, done.id));
     expect(res.status).toBeGreaterThanOrEqual(500);
 
     const current = await request(app.getHttpServer())

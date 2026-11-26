@@ -1,6 +1,11 @@
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
+export class OutboxBoardQueryDto {
+  @IsUUID()
+  boardId: string;
+}
+
 export class OutboxListQueryDto {
   @IsUUID()
   boardId: string;

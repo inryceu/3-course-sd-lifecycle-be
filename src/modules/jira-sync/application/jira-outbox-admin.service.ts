@@ -29,6 +29,15 @@ export interface OutboxPageView {
   nextCursor: string | null;
 }
 
+export interface OutboxRequeueSummary {
+  requeued: number;
+  /** Dead rows left as they are: an earlier row of the same card still blocks them. */
+  skipped: number;
+}
+
+/** One bulk call handles at most this many dead rows; call again for the rest. */
+const BULK_REQUEUE_LIMIT = 500;
+
 interface RawRow {
   id: string;
   sequence: string;
@@ -104,6 +113,29 @@ export class JiraOutboxAdminService {
     )) as RawRow[];
     const items = rows.slice(0, limit).map(toView);
     return { items, nextCursor: rows.length > limit ? items[items.length - 1].id : null };
+  }
+
+  /** Requeues the board's dead rows oldest first; a row blocked by an earlier one is skipped. */
+  async requeueDead(userId: string, boardId: string): Promise<OutboxRequeueSummary> {
+    await this.statusMappings.requireRole(userId, boardId, true);
+    const dead = (await q(
+      this.dataSource,
+      `SELECT id FROM sync_outbox WHERE board_id = $1::uuid AND status = 'DEAD'
+        ORDER BY sequence LIMIT $2::int`,
+      [boardId, BULK_REQUEUE_LIMIT],
+    )) as Array<{ id: string }>;
+    const summary: OutboxRequeueSummary = { requeued: 0, skipped: 0 };
+    for (const { id } of dead) {
+      try {
+        await this.outbox.requeue(id);
+        summary.requeued += 1;
+      } catch (error) {
+        if (!(error instanceof OutboxOperationError)) throw error;
+        summary.skipped += 1;
+      }
+    }
+    if (summary.requeued > 0) this.worker.kick();
+    return summary;
   }
 
   async requeue(userId: string, outboxId: string): Promise<OutboxRowView> {
