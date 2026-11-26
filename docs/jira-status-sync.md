@@ -1,13 +1,42 @@
 # Jira Status Sync (Outbound)
 
-Turns a user card move into one Jira workflow transition and records the attempt in `sync_logs`.
+Turns a user card move into one Jira workflow transition and records every attempt in `sync_logs`. Since T-35 the move is first stored in a durable outbox and sent by a background worker, so a Jira outage does not lose it.
 
-- Listener: `src/modules/jira-sync/application/jira-status-sync.listener.ts`
-- Service: `src/modules/jira-sync/application/jira-status-sync.service.ts`
+- Outbox (generic table, worker, retries): `src/common/outbox/`
+- Handler for `TRANSITION_ISSUE`: `src/modules/jira-sync/application/jira-status-sync-outbox.handler.ts`
+- Admin API and dead-letter notification: `jira-outbox-admin.service.ts`, `jira-outbox-dead-letter.listener.ts`, `presentation/jira-outbox.controller.ts`
+- Direct path, still used for an Admin's conflict resolution ("push BoardSync version"): `jira-status-sync.service.ts`
+- Conflict detection (KAN-45): `jira-sync-conflict.detector.ts`
 - Mapping: `src/modules/jira-sync/application/jira-status-mapping.service.ts`
 - Gateway: `src/modules/jira-sync/application/jira-gateway.port.ts`
 
-## Listener and filters
+## Outbox, retries and outage recovery (T-35)
+
+`CardsService.move` writes one `sync_outbox` row (`operation = TRANSITION_ISSUE`) **in the same transaction as the move** when the move is a user move to another column of a card with a `jiraIssueKey` on a board with a `jiraProjectKey`. The request never calls Jira. A second move of the same card before the worker claims the row is coalesced into it (latest destination wins; a changed destination restarts the retry budget).
+
+The worker (`OutboxWorker`) polls every `OUTBOX_POLL_INTERVAL_SECONDS` (5 s) and is kicked after each enqueue. It claims at most one row per card, the one with the lowest sequence (`FOR UPDATE SKIP LOCKED`, so several instances never send one card out of order), and runs the handler within a 5 s budget per attempt.
+
+| Outcome of an attempt | Result |
+|---|---|
+| Sent, or Jira already in the destination status (`no-op`) | `SENT` |
+| Network error, timeout, 5xx, 429, no time left | `PENDING` again after a delay: exponential with full jitter, floor `OUTBOX_BASE_DELAY_MS` (1 s), cap `OUTBOX_MAX_DELAY_MS` (45 s) |
+| 401, 403, 404, invalid key, board not linked, no direct transition | `DEAD` at once |
+| Still failing 24 hours (`OUTBOX_MAX_AGE_HOURS`) after the row was queued, or `OUTBOX_MAX_ATTEMPTS` reached | `DEAD` with `attempts_exhausted` |
+| A Jira change overtook the move (see below) | `SENT` with outcome `conflict`, nothing sent to Jira |
+
+**Why 45 s and 24 h.** The ticket requires a drain within one minute after Jira is back: a row waits at most one backoff delay, then the 5 s poll and one attempt (45 + 5 + 5 s). Surviving a long outage is therefore done with the 24-hour window, not with long delays. A 3-hour outage keeps every move queued; an incident longer than a day dead-letters the oldest moves. Both values are configurable (README, `.env.example`).
+
+**Dead letters.** A `DEAD` row blocks later rows of the same card until it is requeued. The board Admins and the member who moved the card get a `jira.sync.failed` notification (`notification.created`). An Admin lists rows with `GET /jira/sync/outbox?boardId=` (default `status=DEAD`) and requeues them with `POST /jira/sync/outbox/{outboxId}/requeue` or, after an outage, all at once with `POST /jira/sync/outbox/requeue-dead?boardId=` (at most 500 per call; rows that an earlier dead row of the same card blocks are reported as `skipped`). A requeued row gets a fresh retry window.
+
+**Timed-out transitions.** If the `doTransition` request times out, Jira may have applied it. The attempt is logged as `FAILED` with `outcome: unknown`, the row is retried, and every attempt starts by reading the issue status, so a transition that landed turns the retry into a `no-op` instead of a second transition.
+
+**Conflicts (KAN-45).** Before sending, the handler records the move (`noteBoardMove`, with the move's own time, so the inbound webhook can detect it) and checks `overtakenBy`: a Jira status change to another column at most 5 s before the move or at any time after it wins. The check runs again right before `doTransition`. A move that lost is not sent; the card goes to the column of Jira's status, one `sync_conflict_log` row (resolution `jira`) and one `jira.conflict` notification are created, the sync log gets a `CONFLICT` row, and the outbox row ends `SENT` with outcome `conflict`. A Jira change that arrives while the move is waiting in the queue is therefore never overwritten after the outage.
+
+**Not in the outbox.** Comment mirroring (KAN-44) still calls Jira directly (needs a duplicate-safe marker first); an Admin's "push BoardSync version" conflict resolution also uses the direct path on purpose, without the conflict check.
+
+The sections below describe the attempt itself (budget, target selection, failure reasons, `sync_logs`). The handler implements the same steps; the listener they mention now only wakes the worker (`JiraStatusSyncListener` contains no Jira logic), and the per-issue promise chain serves only the Admin's push.
+
+## Listener and filters (direct path)
 
 `JiraStatusSyncListener` subscribes to `card.moved`. It ignores:
 
@@ -25,7 +54,7 @@ The listener returns `void` and starts `JiraStatusSyncService.syncCardMove()` fi
 
 Attempts for the same board and issue run one after another inside the service (a promise chain keyed by `boardId:issueKey`). A second quick move of one card reads Jira only after the first transition finished, so Jira ends in the status of the last move. Attempts for different issues do not wait for each other. A failed attempt does not block the next one. The waiting time counts against the waiting attempt's own five-second budget.
 
-The chain is in-process only. With more than one API instance, two moves of one card handled by different instances are still unordered; per-card ordering through an outbox is T-35.
+The chain is in-process only. For user moves per-card ordering across instances is now provided by the outbox (head-of-line claim per card).
 
 ## Five-second budget
 
@@ -73,7 +102,7 @@ For T-25, "surfaced" means two things, and nothing more:
 1. a `Logger.error` line `Jira status sync failed for <key> on board <id>: <reason>` (or `outcome unknown` for a timed-out transition) with the error message, and
 2. the `FAILED` `TO_JIRA` row in `sync_logs` with the stable `reason`.
 
-This was the PM's decision on the PR #61 review. Nothing in the product reads these rows yet, so a board user is not told when Jira did not follow a move. A user-facing surface for failures (a read API or a notification to the mover) is a follow-up for T-35; T-34 covers conflicts only. `sync_logs` has no `board_id`; failed rows are found through `payload->>'cardId'` and `payload->>'issueKey'` until that follow-up adds the column.
+This was the PM's decision on the PR #61 review. Nothing in the product reads these rows yet, so a board user is not told when Jira did not follow a move. For user moves T-35 adds that surface: dead-lettered moves notify the Admins and the mover and are listed by the Admin API above. `sync_logs` has no `board_id`; failed rows are found through `payload->>'cardId'` and `payload->>'issueKey'` until that follow-up adds the column.
 
 ## `sync_logs` rows
 

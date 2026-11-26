@@ -4,6 +4,7 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
+import { OUTBOX_CONFIG, loadOutboxConfig } from '../src/common/outbox/outbox.config';
 import { BOARDS_FACADE, BoardsFacade } from '../src/modules/boards';
 import { BoardEntity } from '../src/modules/boards/infrastructure/persistence/board.entity';
 import { CardEntity } from '../src/modules/boards/infrastructure/persistence/card.entity';
@@ -194,6 +195,8 @@ describe('Jira status sync (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(JIRA_GATEWAY)
       .useValue(jira)
+      .overrideProvider(OUTBOX_CONFIG)
+      .useValue({ ...loadOutboxConfig(), pollIntervalSeconds: 1 })
       .compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
@@ -204,7 +207,10 @@ describe('Jira status sync (e2e)', () => {
     admin = await registerUser(app, 'status-sync-admin');
   });
 
-  beforeEach(() => jira.reset());
+  beforeEach(async () => {
+    jira.reset();
+    await dataSource.query('TRUNCATE sync_outbox');
+  });
 
   afterAll(() => app.close());
 
@@ -281,7 +287,7 @@ describe('Jira status sync (e2e)', () => {
     expect(row).toMatchObject({
       direction: SyncDirection.TO_JIRA,
       status: SyncStatus.FAILED,
-      payload: { reason: 'jira error' },
+      payload: { errorCode: 'transition_rejected', retryable: false },
       errorMessage: expect.stringContaining('transition rejected'),
     });
     expect(jira.doTransitionCalls).toHaveLength(1);
@@ -329,7 +335,7 @@ describe('Jira status sync (e2e)', () => {
     expect(row).toMatchObject({
       direction: SyncDirection.TO_JIRA,
       status: SyncStatus.FAILED,
-      payload: { reason: 'jira error' },
+      payload: { errorCode: 'jira_error', retryable: true },
     });
   });
 });

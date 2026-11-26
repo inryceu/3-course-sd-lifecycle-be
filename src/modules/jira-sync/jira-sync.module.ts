@@ -18,6 +18,7 @@ import { JiraWebhookDeliveryService } from './application/jira-webhook-delivery.
 import { JiraWebhookLifecycleService } from './application/jira-webhook-lifecycle.service';
 import { JiraWebhookService } from './application/jira-webhook.service';
 import { TOKEN_CIPHER } from './application/token-cipher.port';
+import { JiraStatusSyncOutboxHandler } from './application/jira-status-sync-outbox.handler';
 import { AesGcmTokenCipher } from './infrastructure/aes-gcm-token-cipher';
 import { AtlassianOAuthHttpClient } from './infrastructure/atlassian-oauth.http-client';
 import {
@@ -37,6 +38,9 @@ import { JiraImportController } from './presentation/jira-import.controller';
 import { JiraOAuthController } from './presentation/jira-oauth.controller';
 import { JiraWebhookController } from './presentation/jira-webhook.controller';
 import { BoardsModule } from '../boards';
+import { JiraOutboxAdminService } from './application/jira-outbox-admin.service';
+import { JiraOutboxDeadLetterListener } from './application/jira-outbox-dead-letter.listener';
+import { JiraOutboxController } from './presentation/jira-outbox.controller';
 
 @Module({
   imports: [
@@ -58,15 +62,19 @@ import { BoardsModule } from '../boards';
     JiraOAuthController,
     JiraImportController,
     JiraWebhookController,
+    JiraOutboxController,
     JiraConflictsController,
   ],
   providers: [
+    JiraOutboxAdminService,
+    JiraOutboxDeadLetterListener,
     JiraOAuthService,
     JiraConnectionService,
     JiraImportService,
     JiraStatusMappingService,
     JiraStatusSyncService,
     JiraStatusSyncListener,
+    JiraStatusSyncOutboxHandler,
     JiraSyncConflictDetector,
     JiraSyncConflictsService,
     JiraCommentSyncService,

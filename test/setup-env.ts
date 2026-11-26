@@ -26,6 +26,7 @@ const defaults: Record<string, string> = {
   WEBHOOK_SECRET: 'integration-test-webhook-secret-32-chars-min',
   // The e2e tests call the reminder run directly.
   REMINDER_INTERVAL_SECONDS: '0',
+  OUTBOX_POLL_INTERVAL_SECONDS: '0',
   // Short heartbeat so a dead client is detected within a test.
   REALTIME_PING_INTERVAL_MS: '1000',
   REALTIME_PING_TIMEOUT_MS: '1000',

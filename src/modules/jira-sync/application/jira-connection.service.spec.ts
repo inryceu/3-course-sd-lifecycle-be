@@ -16,6 +16,7 @@ function setup(role: BoardRole | null, connection: Partial<JiraConnectionEntity>
     upsertCardFromExternal: jest.fn(),
     moveCardFromExternal: jest.fn(),
     notifyBoardAdmins: jest.fn(),
+    notifyUser: jest.fn(),
     markCommentSynced: jest.fn(),
   };
   const webhooks = { removeForBoard: jest.fn().mockResolvedValue(undefined) };
