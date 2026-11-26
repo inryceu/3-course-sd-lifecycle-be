@@ -21,6 +21,22 @@ export class NotificationsService {
   ) {}
 
   /**
+   * One notification for every Admin of the board, each announced with `notification.created`
+   * after it is stored. Returns how many were created.
+   */
+  async notifyAdmins(
+    boardId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<number> {
+    const admins = await this.memberships.find({
+      where: { boardId, role: BoardRole.ADMIN },
+      select: { userId: true },
+    });
+    return this.createFor([...new Set(admins.map((m) => m.userId))], boardId, type, payload);
+  }
+
+  /**
    * The user's notifications, newest first. The cursor is the id of the last item of the previous
    * page; comparing against that row keeps the full timestamp precision.
    */
@@ -61,19 +77,6 @@ export class NotificationsService {
       throw new NotFoundException('Notification not found');
     }
     return toNotificationView(notification);
-  }
-
-  /** One notification per Admin of the board. Returns the number created. */
-  async notifyAdmins(
-    boardId: string,
-    type: NotificationType,
-    payload: Record<string, unknown>,
-  ): Promise<number> {
-    const admins = await this.memberships.find({
-      where: { boardId, role: BoardRole.ADMIN },
-      select: { userId: true },
-    });
-    return this.createFor([...new Set(admins.map((m) => m.userId))], boardId, type, payload);
   }
 
   /** Notifies one member; a user who is not (or no longer) a member gets nothing. */

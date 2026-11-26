@@ -1,5 +1,8 @@
 # BoardSync - Backend
 
+[![CI (dev)](https://github.com/inryceu/3-course-sd-lifecycle-be/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/inryceu/3-course-sd-lifecycle-be/actions/workflows/ci.yml?query=branch%3Adev)
+[![CI (main)](https://github.com/inryceu/3-course-sd-lifecycle-be/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/inryceu/3-course-sd-lifecycle-be/actions/workflows/ci.yml?query=branch%3Amain)
+
 > Kanban board service with two-way Jira synchronisation. Backend repository (NestJS + TypeORM + PostgreSQL).
 
 ## Concept
@@ -41,7 +44,7 @@ src/
 | `boards` | Boards, columns (ordering, min 3), cards, board roles, `BOARDS_FACADE` | ✅ Core implemented (FR-03, FR-04); ✅ Members and roles (FR-10); ✅ Labels and comments (FR-08, FR-09); ✅ Deadline reminders and notifications (T-32) |
 | `jira-sync` | OAuth 2.0 (3LO) connect flow, AES-256-GCM token vault, Jira gateway client, issue import | ✅ Connect/status/disconnect (FR-02); ✅ Token vault; ✅ Gateway client (T-23); ✅ Import, status mappings and project picker (FR-05); ✅ Board → Jira status sync (FR-06); ✅ Jira → board webhooks (FR-12) |
 | `realtime` | Socket.IO namespace `/realtime`, board rooms, event delivery | ✅ Transport (FR-11) |
-| `health` | `GET /api/v1/health` (database readiness) — reference module | ✅ Implemented |
+| `health` | `GET /api/v1/health` (database readiness), `GET /api/v1/health/alive` (liveness, process only), `GET /api/v1/health/ready` (readiness, database) — public, not rate limited | ✅ Implemented |
 
 Cross-module rules (public API only, no entity/repository sharing, no cycles) are enforced by `pnpm lint`.
 
@@ -116,6 +119,30 @@ To check the whole stack in one go (build, wait for every healthcheck, migration
 Startup order is gated by health checks (postgres -> backend with migrations applied -> frontend); data lives in the named volume `boardsync-postgres-full-data`. Stop with `docker compose -f docker-compose.full.yml down` (add `-v` to delete the data). Rationale: [`docs/adr/0001-full-stack-compose.md`](docs/adr/0001-full-stack-compose.md).
 
 The per-environment compose files remain: `docker-compose.yml` (development, hot reload) and `docker-compose.prod.yml` (production-like).
+
+### Production-like profile (TLS)
+
+`docker-compose.prod.yml` runs postgres, the backend and an nginx reverse proxy that terminates TLS (1.2 and 1.3 only), redirects HTTP to HTTPS and proxies REST and Socket.IO (`wss://`). Only nginx publishes ports; the backend and the database are reachable inside the compose network only (`docker compose -f docker-compose.prod.yml exec postgres psql -U boardsync boardsync_prod` for the database). The backend applies the migrations before it starts listening.
+
+```bash
+./nginx/generate-self-signed-cert.sh                 # self-signed cert into ssl/ (local use only; production needs a real one)
+mkdir -p secrets && printf '%s' "$DATABASE_PASSWORD" > secrets/db_password.txt   # must equal DATABASE_PASSWORD
+export FRONTEND_URL=https://localhost DATABASE_PASSWORD=... JWT_SECRET=... \
+       JIRA_CLIENT_ID=... JIRA_CLIENT_SECRET=... JIRA_REDIRECT_URI=https://localhost/jira/callback \
+       JIRA_WEBHOOK_URL=https://localhost/api/v1/jira/webhook TOKEN_ENCRYPTION_KEY=... WEBHOOK_SECRET=...
+docker compose -f docker-compose.prod.yml up -d --wait
+```
+
+`ssl/` and `secrets/` are git-ignored. Every variable in `.env.prod` is a `${...}` placeholder read from the environment; with `NODE_ENV=production` the app refuses to start unless `FRONTEND_URL`, `JIRA_REDIRECT_URI` and `JIRA_WEBHOOK_URL` are `https://` URLs. Set `HTTP_PORT` / `HTTPS_PORT` to move nginx off 80/443.
+
+| What | URL |
+| --- | --- |
+| REST API | https://localhost/api/v1 (HTTP on port 80 redirects here) |
+| Socket.IO | wss://localhost/realtime |
+| Liveness | https://localhost/api/v1/health/alive |
+| Readiness | https://localhost/api/v1/health/ready |
+
+The self-signed certificate makes browsers and curl complain (`curl -k`). Stop with `docker compose -f docker-compose.prod.yml down` (`-v` deletes the data). What was verified, with the commands: [`docs/tls-verification.md`](docs/tls-verification.md).
 
 ## Diagrams & verification
 

@@ -53,6 +53,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/Health'
 
+  /health/alive:
+    get:
+      tags: [health]
+      operationId: getHealthAlive
+      summary: Liveness probe (the process only, the database is not checked)
+      security: []
+      responses:
+        '200':
+          description: The process is running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Liveness'
+
+  /health/ready:
+    get:
+      tags: [health]
+      operationId: getHealthReady
+      summary: Readiness probe (the database is reachable)
+      security: []
+      responses:
+        '200':
+          description: Service and database are up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Database is not reachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
   /auth/register:
     post:
       tags: [auth]
@@ -66,6 +100,8 @@ paths:
             schema:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '201':
           description: Account created
           content:
@@ -90,6 +126,8 @@ paths:
             schema:
               $ref: '#/components/schemas/LoginRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Signed in
           content:
@@ -107,6 +145,8 @@ paths:
       operationId: getCurrentUser
       summary: Current user
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: The authenticated user
           content:
@@ -122,6 +162,8 @@ paths:
       operationId: listBoards
       summary: Boards the user belongs to
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Boards ordered by creation time
           content:
@@ -143,6 +185,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateBoardRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '201':
           description: Board with its three default columns
           content:
@@ -162,12 +206,16 @@ paths:
       operationId: getBoard
       summary: Board with ordered columns and their ordered cards
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Board detail
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/BoardDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -183,6 +231,8 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateBoardRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Updated board
           content:
@@ -202,6 +252,8 @@ paths:
       operationId: deleteBoard
       summary: Delete the board and everything it owns (Admin)
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '204':
           description: Deleted
         '401':
@@ -219,6 +271,8 @@ paths:
       operationId: listColumns
       summary: Columns of a board ordered by position
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Columns
           content:
@@ -242,6 +296,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateColumnRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '201':
           description: Created column
           content:
@@ -271,6 +327,8 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateColumnRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Updated column
           content:
@@ -290,6 +348,8 @@ paths:
       operationId: deleteColumn
       summary: Delete an empty column while at least three remain (Admin)
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '204':
           description: Deleted
         '401':
@@ -315,6 +375,8 @@ paths:
             schema:
               $ref: '#/components/schemas/ReorderColumnRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Columns of the board in their new order
           content:
@@ -340,6 +402,8 @@ paths:
       operationId: listCards
       summary: Cards of a column ordered by position
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Cards
           content:
@@ -363,6 +427,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateCardRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '201':
           description: Created card
           content:
@@ -386,6 +452,8 @@ paths:
       operationId: getCard
       summary: Card
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Card
           content:
@@ -407,6 +475,8 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateCardRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Updated card
           content:
@@ -426,6 +496,8 @@ paths:
       operationId: deleteCard
       summary: Delete a card (Member, Admin)
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '204':
           description: Deleted
         '401':
@@ -449,6 +521,8 @@ paths:
             schema:
               $ref: '#/components/schemas/MoveCardRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Moved card
           content:
@@ -478,6 +552,8 @@ paths:
             schema:
               $ref: '#/components/schemas/AssignCardRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Updated card
           content:
@@ -501,6 +577,8 @@ paths:
       operationId: listLabels
       summary: Labels of a board
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Labels
           content:
@@ -524,6 +602,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateLabelRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '201':
           description: Created label
           content:
@@ -538,6 +618,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /labels/{labelId}:
     parameters:
@@ -558,6 +640,8 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateLabelRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Updated label
           content:
@@ -577,6 +661,8 @@ paths:
       operationId: deleteLabel
       summary: Delete a label (Member, Admin)
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '204':
           description: Deleted
         '401':
@@ -600,6 +686,8 @@ paths:
       operationId: attachLabel
       summary: Attach a label to a card (Member, Admin)
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Updated card
           content:
@@ -617,6 +705,8 @@ paths:
       operationId: detachLabel
       summary: Detach a label from a card (Member, Admin)
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Updated card
           content:
@@ -641,6 +731,8 @@ paths:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: A page of comments
           content:
@@ -656,7 +748,8 @@ paths:
     post:
       tags: [comments]
       operationId: createComment
-      summary: Comment on a card; mirrored to Jira when the card is linked (Member, Admin)
+      summary: Comment on a card; mirrored asynchronously to Jira when the card is linked (Member, Admin)
+      description: Creates the comment and returns 201 without waiting for Jira. Inspect `syncedToJira` or the sync log for the mirror outcome.
       requestBody:
         required: true
         content:
@@ -664,8 +757,10 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateCommentRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '201':
-          description: Created comment
+          description: Created comment; `syncedToJira` is false while mirroring is pending
           content:
             application/json:
               schema:
@@ -692,6 +787,8 @@ paths:
       operationId: deleteComment
       summary: Delete a comment (Author or Admin)
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '204':
           description: Deleted
         '401':
@@ -709,6 +806,8 @@ paths:
       operationId: listMembers
       summary: Members and their roles
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Members
           content:
@@ -732,6 +831,8 @@ paths:
             schema:
               $ref: '#/components/schemas/InviteMemberRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '201':
           description: Created membership
           content:
@@ -769,6 +870,8 @@ paths:
             schema:
               $ref: '#/components/schemas/ChangeMemberRoleRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Updated membership
           content:
@@ -790,6 +893,8 @@ paths:
       operationId: removeMember
       summary: Remove a member (Admin)
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '204':
           description: Removed
         '401':
@@ -812,6 +917,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/BoardIdQuery'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Authorise URL
           content:
@@ -851,6 +958,8 @@ paths:
           schema:
             type: string
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Connected
           content:
@@ -876,6 +985,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/BoardIdQuery'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Status without tokens
           content:
@@ -893,6 +1004,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/BoardIdQuery'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '204':
           description: Disconnected
         '401':
@@ -1000,6 +1113,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/BoardIdQuery'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Mappings
           content:
@@ -1024,6 +1139,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateJiraMappingRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '201':
           description: Mapping
           content:
@@ -1049,6 +1166,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/BoardIdQuery'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: One entry per status of the linked Jira project
           content:
@@ -1076,6 +1195,8 @@ paths:
             schema:
               $ref: '#/components/schemas/PutJiraStatusMappingsRequest'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: The full mapping after the change
           content:
@@ -1144,13 +1265,18 @@ paths:
     get:
       tags: [jira]
       operationId: listJiraConflicts
-      summary: Logged synchronisation conflicts of a board (Admin)
-      x-implemented-in: T-34
+      summary: Logged synchronisation conflicts of a board, newest first (Admin)
+      description: |
+        A conflict is a BoardSync user move of a linked card and a Jira status change of the same
+        issue at most 5 seconds apart (either order) that put the card in different columns.
+        Jira wins by default (`resolution: jira`, `resolvedAt: null`) until an admin resolves it.
       parameters:
         - $ref: '#/components/parameters/BoardIdQuery'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: A page of conflicts
           content:
@@ -1164,6 +1290,64 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /jira/conflicts/{conflictId}/resolve:
+    post:
+      tags: [jira]
+      operationId: resolveJiraConflict
+      summary: Keep the Jira version or push the BoardSync version of a conflict (Admin)
+      description: |
+        `jira` reads the issue's current Jira status and moves the card to its column; nothing is
+        written to Jira. `boardsync` transitions the issue to the status of the conflict's
+        BoardSync column through the outbound status sync (one `sync_logs` row) and, when Jira
+        accepts it, moves the card back to that column. A conflict is resolved once; when the Jira
+        call fails the conflict stays unresolved.
+      parameters:
+        - name: conflictId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveJiraConflictRequest'
+      responses:
+        '200':
+          description: The resolved conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraConflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The conflict is already resolved, or Jira must be reconnected for this board
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Jira rate-limited the request; retry later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Jira is unavailable or did not accept the BoardSync version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /notifications:
     get:
       tags: [notifications]
@@ -1173,6 +1357,8 @@ paths:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: A page of notifications
           content:
@@ -1198,12 +1384,16 @@ paths:
             type: string
             format: uuid
       responses:
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '200':
           description: Updated notification
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Notification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1293,6 +1483,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    TooManyRequests:
+      description: Rate limit exceeded (per client; auth routes have stricter limits); retry later
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
 
   schemas:
     Error:
@@ -1326,6 +1522,19 @@ components:
         database:
           type: string
           enum: [up, down]
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: number
+
+    Liveness:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
         timestamp:
           type: string
           format: date-time
@@ -1662,6 +1871,7 @@ components:
           type: string
         syncedToJira:
           type: boolean
+          description: True after Jira accepted the mirrored comment; remains false for unlinked cards, pending mirroring and failed attempts.
         createdAt:
           type: string
           format: date-time
@@ -1872,7 +2082,21 @@ components:
           type: string
     JiraConflict:
       type: object
-      required: [id, boardId, cardId, jiraIssueKey, boardStatus, jiraStatus, detectedAt]
+      required:
+        - id
+        - boardId
+        - cardId
+        - jiraIssueKey
+        - boardColumnId
+        - boardStatus
+        - boardChangedAt
+        - jiraColumnId
+        - jiraStatus
+        - jiraChangedAt
+        - detectedAt
+        - resolution
+        - resolvedAt
+        - resolvedById
       properties:
         id:
           type: string
@@ -1885,16 +2109,52 @@ components:
           format: uuid
         jiraIssueKey:
           type: string
+        boardColumnId:
+          type: string
+          format: uuid
+          description: Column the BoardSync user moved the card to
         boardStatus:
           type: string
+          description: Title of that column when the conflict was detected
+        boardChangedAt:
+          type: string
+          format: date-time
+          description: Time of the BoardSync move
+        jiraColumnId:
+          type: string
+          format: uuid
+          description: Column the Jira status maps to
         jiraStatus:
           type: string
+          description: Jira status name
+        jiraChangedAt:
+          type: string
+          format: date-time
+          description: Time of the Jira change (the webhook `timestamp`)
         detectedAt:
           type: string
           format: date-time
         resolution:
           type: string
+          enum: [jira, boardsync]
+          description: Version the card ended with; `jira` is applied automatically on detection
+        resolvedAt:
+          type: string
+          format: date-time
           nullable: true
+          description: When an admin resolved the conflict; null while it awaits a decision
+        resolvedById:
+          type: string
+          format: uuid
+          nullable: true
+    ResolveJiraConflictRequest:
+      type: object
+      required: [resolution]
+      properties:
+        resolution:
+          type: string
+          enum: [jira, boardsync]
+          description: '`jira` keeps the Jira version, `boardsync` pushes the BoardSync version to Jira'
     JiraConflictPage:
       type: object
       required: [items]

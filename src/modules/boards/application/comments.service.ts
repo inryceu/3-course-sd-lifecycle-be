@@ -127,6 +127,14 @@ export class CommentsService {
     return snapshot;
   }
 
+  async markSynced(cardId: string, commentId: string): Promise<void> {
+    const comment = await this.comments.findOne({ where: { id: commentId, cardId } });
+    if (comment === null) return;
+
+    comment.markSynced();
+    await this.comments.save(comment);
+  }
+
   async delete(userId: string, cardId: string, commentId: string): Promise<void> {
     const card = await this.cards.findOne({ where: { id: cardId } });
     if (!card) throw new NotFoundException('Card not found');

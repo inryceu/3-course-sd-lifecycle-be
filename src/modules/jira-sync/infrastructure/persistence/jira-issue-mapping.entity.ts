@@ -30,4 +30,21 @@ export class JiraIssueMappingEntity extends BaseEntity {
   /** `timestamp` (ms) of the last Jira webhook delivery applied; older deliveries are dropped. */
   @Column({ name: 'last_jira_event_at', type: 'bigint', nullable: true })
   lastJiraEventAt: string | null;
+
+  // Latest change on each side, for conflict detection (FR-13); see JiraSyncConflictDetector.
+  @Column({ name: 'last_board_move_at', type: 'timestamptz', nullable: true })
+  lastBoardMoveAt: Date | null;
+
+  @Column({ name: 'last_board_column_id', type: 'uuid', nullable: true })
+  lastBoardColumnId: string | null;
+
+  /** Latest Jira status change that was not an echo of BoardSync's own transition. */
+  @Column({ name: 'last_jira_change_at', type: 'timestamptz', nullable: true })
+  lastJiraChangeAt: Date | null;
+
+  @Column({ name: 'last_jira_column_id', type: 'uuid', nullable: true })
+  lastJiraColumnId: string | null;
+
+  @Column({ name: 'last_jira_status_name', type: 'varchar', length: 255, nullable: true })
+  lastJiraStatusName: string | null;
 }

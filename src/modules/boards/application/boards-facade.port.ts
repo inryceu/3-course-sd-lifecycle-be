@@ -1,5 +1,5 @@
 import { BoardRole, ColumnType } from '../domain/board-role';
-import type { NotificationType } from '../infrastructure/persistence/notification.entity';
+import { NotificationType } from '../infrastructure/persistence/notification.entity';
 
 /**
  * Port other modules (jira-sync) use to read and change boards without touching board tables.
@@ -55,7 +55,10 @@ export interface BoardsFacade {
    */
   upsertCardFromExternal(input: ExternalCardInput): Promise<ExternalUpsertResult>;
   moveCardFromExternal(input: ExternalCardMove): Promise<'moved' | 'unchanged' | 'not-found'>;
-
+  /**
+   * Stores a notification for every Admin of the board and publishes `notification.created` for
+   * each; returns how many were created.
+   */
   notifyBoardAdmins(
     boardId: string,
     type: NotificationType,
@@ -71,4 +74,6 @@ export interface BoardsFacade {
     type: NotificationType,
     payload: Record<string, unknown>,
   ): Promise<number>;
+  /** Marks the comment as synced only when it belongs to the given card. */
+  markCommentSynced(cardId: string, commentId: string): Promise<void>;
 }

@@ -3,7 +3,12 @@ import { AddressInfo } from 'net';
 import { Logger } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { AtlassianOAuth, AtlassianTokens } from '../application/atlassian-oauth.port';
-import { DEFAULT_SEARCH_FIELDS, JiraComment, JiraIssue } from '../application/jira-gateway.port';
+import {
+  AddCommentInput,
+  DEFAULT_SEARCH_FIELDS,
+  JiraComment,
+  JiraIssue,
+} from '../application/jira-gateway.port';
 import { plainTextToAdf } from '../application/helpers/plain-text-to-adf';
 import { TokenCipher } from '../application/token-cipher.port';
 import { AtlassianRejectedError, AtlassianUnavailableError } from '../domain/errors';
@@ -480,6 +485,91 @@ describe('JiraGatewayHttpClient transitions and comments', () => {
     expect(created).toEqual(COMMENT);
     expect(requests[1].method).toBe('POST');
     expect(JSON.parse(requests[1].body)).toEqual({ body: plainTextToAdf('hello') });
+  });
+});
+
+describe('JiraGatewayHttpClient addComment budget', () => {
+  function addCommentInput(timeBudgetMs?: number): AddCommentInput {
+    return {
+      boardId: BOARD,
+      issueIdOrKey: 'KAN-1',
+      body: plainTextToAdf('hello'),
+      ...(timeBudgetMs === undefined ? {} : { timeBudgetMs }),
+    };
+  }
+
+  it('caps the per-request timeout by a shortened caller budget', async () => {
+    respond = () => ({ status: 201, body: COMMENT });
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    const { client } = setup({ timeBudgetMs: 5_000, timeoutMs: 10_000 });
+
+    await client.addComment(addCommentInput(250));
+
+    expect(timeoutSpy).toHaveBeenCalledWith(250);
+  });
+
+  it('uses the configured budget when the caller omits the override', async () => {
+    respond = () => ({ status: 201, body: COMMENT });
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    const { client } = setup({ timeBudgetMs: 4_000, timeoutMs: 10_000 });
+
+    await client.addComment(addCommentInput());
+
+    expect(timeoutSpy).toHaveBeenCalledWith(4_000);
+  });
+
+  it('caps a caller budget above the configured budget', async () => {
+    respond = () => ({ status: 201, body: COMMENT });
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    const { client } = setup({ timeBudgetMs: 5_000, timeoutMs: 10_000 });
+
+    await client.addComment(addCommentInput(60_000));
+
+    expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+  });
+
+  it('stops before a wait that would exceed the caller budget', async () => {
+    respond = () => ({ status: 429, headers: { 'Retry-After': '2' }, body: {} });
+    const { client, sleep } = setup({ timeBudgetMs: 5_000 });
+
+    const failure = client.addComment(addCommentInput(1_000));
+    await expect(failure).rejects.toBeInstanceOf(JiraTimeBudgetExceededError);
+    await expect(failure).rejects.toMatchObject({ timeBudgetMs: 1_000, attempts: 1 });
+    expect(sleep).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(1);
+  });
+
+  it('rejects before calling Jira when the caller budget is already exhausted', async () => {
+    const { client } = setup({ timeBudgetMs: 5_000 });
+
+    const failure = client.addComment(addCommentInput(0));
+    await expect(failure).rejects.toBeInstanceOf(JiraTimeBudgetExceededError);
+    await expect(failure).rejects.toMatchObject({ timeBudgetMs: 0, attempts: 0 });
+    expect(requests).toHaveLength(0);
+  });
+
+  it('does not retry the non-idempotent POST on a server error', async () => {
+    respond = () => ({ status: 503, body: {} });
+    const { client } = setup();
+
+    const failure = client.addComment(addCommentInput());
+    await expect(failure).rejects.toBeInstanceOf(JiraServerError);
+    await expect(failure).rejects.toMatchObject({ attempts: 1, maxAttempts: 1 });
+    expect(requests).toHaveLength(1);
+  });
+
+  it('does not retry the non-idempotent POST after a timeout', async () => {
+    const timeout = new Error('timed out');
+    timeout.name = 'TimeoutError';
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockRejectedValue(timeout);
+    const { client } = setup();
+
+    await expect(client.addComment(addCommentInput())).rejects.toMatchObject({
+      code: 'TIMEOUT',
+      attempts: 1,
+      maxAttempts: 1,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
 

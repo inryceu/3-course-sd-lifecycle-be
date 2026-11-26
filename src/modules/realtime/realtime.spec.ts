@@ -3,6 +3,7 @@ import { createEvent, DOMAIN_EVENT_TYPES } from '../../common/events';
 import { AuthFacade } from '../auth';
 import { BoardEventsListener } from './application/board-events.listener';
 import { boardRoom, userRoom } from './application/rooms';
+import { originSocketMiddleware } from './presentation/origin-socket';
 import { RealtimeGateway } from './presentation/realtime.gateway';
 
 const BOARD = '3f1b5f0a-6a53-4a39-9f4f-6c1d2f9a1111';
@@ -135,11 +136,23 @@ describe('RealtimeGateway rooms', () => {
 });
 
 describe('BoardEventsListener', () => {
-  const setup = () => {
+  const setup = (socketOwner?: string) => {
     const emitToRoom = jest.fn();
-    const listener = new BoardEventsListener({ emitToRoom } as unknown as RealtimeGateway);
-    return { listener, emitToRoom };
+    const leaveRoom = jest.fn();
+    const isSocketOf = jest.fn(
+      (_socketId: string, userId: string) => socketOwner !== undefined && socketOwner === userId,
+    );
+    const listener = new BoardEventsListener({
+      emitToRoom,
+      leaveRoom,
+      isSocketOf,
+    } as unknown as RealtimeGateway);
+    return { listener, emitToRoom, leaveRoom, isSocketOf };
   };
+
+  /** Runs `fn` as if inside an HTTP request that carried `X-Socket-Id: socketId`. */
+  const inRequestFrom = (socketId: string, fn: () => void) =>
+    originSocketMiddleware({ header: () => socketId }, undefined, fn);
 
   it('delivers card events to the board room with the type as message name and the full envelope', () => {
     const { listener, emitToRoom } = setup();
@@ -147,7 +160,48 @@ describe('BoardEventsListener', () => {
 
     listener.onCardCreated(event);
 
-    expect(emitToRoom).toHaveBeenCalledWith(boardRoom(BOARD), 'card.created', event);
+    expect(emitToRoom).toHaveBeenCalledWith(boardRoom(BOARD), 'card.created', event, undefined);
+  });
+
+  it("skips the author's originating socket named in the request", () => {
+    const { listener, emitToRoom, isSocketOf } = setup('u1');
+    const event = createEvent('card.created', { boardId: BOARD, actorId: 'u1', payload: card });
+
+    inRequestFrom('sock-1', () => listener.onCardCreated(event));
+
+    expect(isSocketOf).toHaveBeenCalledWith('sock-1', 'u1');
+    expect(emitToRoom).toHaveBeenCalledWith(boardRoom(BOARD), 'card.created', event, 'sock-1');
+  });
+
+  it('does not skip a socket that belongs to someone other than the author', () => {
+    const { listener, emitToRoom } = setup('someone-else');
+    const event = createEvent('card.created', { boardId: BOARD, actorId: 'u1', payload: card });
+
+    inRequestFrom('sock-1', () => listener.onCardCreated(event));
+
+    expect(emitToRoom).toHaveBeenCalledWith(boardRoom(BOARD), 'card.created', event, undefined);
+  });
+
+  it('evicts a removed member from the board room before announcing the removal', () => {
+    const { listener, emitToRoom, leaveRoom } = setup();
+    const event = createEvent('member.removed', {
+      boardId: BOARD,
+      actorId: 'admin',
+      payload: { userId: 'u2' },
+    });
+
+    listener.onMemberRemoved(event);
+
+    expect(leaveRoom).toHaveBeenCalledWith(userRoom('u2'), boardRoom(BOARD));
+    expect(emitToRoom).toHaveBeenCalledWith(
+      [boardRoom(BOARD), userRoom('u2')],
+      'member.removed',
+      event,
+      undefined,
+    );
+    expect(leaveRoom.mock.invocationCallOrder[0]).toBeLessThan(
+      emitToRoom.mock.invocationCallOrder[0],
+    );
   });
 
   it('does not deliver an event to any other board room', () => {

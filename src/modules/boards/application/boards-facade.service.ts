@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 import { BoardRole } from '../domain/board-role';
 import { BoardEntity } from '../infrastructure/persistence/board.entity';
 import { BoardColumnEntity } from '../infrastructure/persistence/column.entity';
-import type { NotificationType } from '../infrastructure/persistence/notification.entity';
 import { BoardAccessService } from './board-access.service';
 import {
   BoardsFacade,
@@ -15,12 +14,15 @@ import {
 } from './boards-facade.port';
 import { CardsService } from './cards.service';
 import { NotificationsService } from './notifications.service';
+import { NotificationType } from '../infrastructure/persistence/notification.entity';
+import { CommentsService } from './comments.service';
 
 @Injectable()
 export class BoardsFacadeService implements BoardsFacade {
   constructor(
     private readonly access: BoardAccessService,
     private readonly cards: CardsService,
+    private readonly comments: CommentsService,
     @InjectRepository(BoardEntity) private readonly boards: Repository<BoardEntity>,
     @InjectRepository(BoardColumnEntity) private readonly columns: Repository<BoardColumnEntity>,
     private readonly notifications: NotificationsService,
@@ -68,5 +70,9 @@ export class BoardsFacadeService implements BoardsFacade {
     payload: Record<string, unknown>,
   ): Promise<number> {
     return this.notifications.notifyUser(userId, boardId, type, payload);
+  }
+
+  markCommentSynced(cardId: string, commentId: string): Promise<void> {
+    return this.comments.markSynced(cardId, commentId);
   }
 }

@@ -3,11 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth';
 import { ATLASSIAN_OAUTH } from './application/atlassian-oauth.port';
 import { JIRA_GATEWAY } from './application/jira-gateway.port';
+import { JiraCommentSyncListener } from './application/jira-comment-sync.listener';
+import { JiraCommentSyncService } from './application/jira-comment-sync.service';
 import { JiraConnectionService } from './application/jira-connection.service';
 import { JiraImportService } from './application/jira-import.service';
 import { JiraStatusMappingService } from './application/jira-status-mapping.service';
 import { JiraStatusSyncListener } from './application/jira-status-sync.listener';
 import { JiraStatusSyncService } from './application/jira-status-sync.service';
+import { JiraSyncConflictDetector } from './application/jira-sync-conflict.detector';
+import { JiraSyncConflictsService } from './application/jira-sync-conflicts.service';
 import { JiraOAuthService } from './application/jira-oauth.service';
 import { JiraWebhookAuthenticityService } from './application/jira-webhook-authenticity.service';
 import { JiraWebhookDeliveryService } from './application/jira-webhook-delivery.service';
@@ -27,7 +31,9 @@ import { JiraOAuthStateEntity } from './infrastructure/persistence/jira-oauth-st
 import { JiraStatusMappingEntity } from './infrastructure/persistence/jira-status-mapping.entity';
 import { JiraWebhookDeliveryEntity } from './infrastructure/persistence/jira-webhook-delivery.entity';
 import { JiraWebhookEntity } from './infrastructure/persistence/jira-webhook.entity';
+import { SyncConflictLogEntity } from './infrastructure/persistence/sync-conflict-log.entity';
 import { SyncLogEntity } from './infrastructure/persistence/sync-log.entity';
+import { JiraConflictsController } from './presentation/jira-conflicts.controller';
 import { JiraImportController } from './presentation/jira-import.controller';
 import { JiraOAuthController } from './presentation/jira-oauth.controller';
 import { JiraWebhookController } from './presentation/jira-webhook.controller';
@@ -49,6 +55,7 @@ import { JiraOutboxController } from './presentation/jira-outbox.controller';
       JiraWebhookDeliveryEntity,
       JiraWebhookEntity,
       SyncLogEntity,
+      SyncConflictLogEntity,
     ]),
   ],
   controllers: [
@@ -56,6 +63,7 @@ import { JiraOutboxController } from './presentation/jira-outbox.controller';
     JiraImportController,
     JiraWebhookController,
     JiraOutboxController,
+    JiraConflictsController,
   ],
   providers: [
     JiraOutboxAdminService,
@@ -67,6 +75,10 @@ import { JiraOutboxController } from './presentation/jira-outbox.controller';
     JiraStatusSyncService,
     JiraStatusSyncListener,
     JiraStatusSyncOutboxHandler,
+    JiraSyncConflictDetector,
+    JiraSyncConflictsService,
+    JiraCommentSyncService,
+    JiraCommentSyncListener,
     JiraWebhookAuthenticityService,
     JiraWebhookDeliveryService,
     JiraWebhookLifecycleService,

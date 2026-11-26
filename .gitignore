@@ -28,7 +28,6 @@ Thumbs.db
 # Git
 .git
 .gitignore
-.gitattributes
 
 # Logs
 logs
@@ -45,8 +44,7 @@ coverage
 .cache
 tmp
 temp
-*-bundle.txt
-mig.txt
 
-*-bundle.txt
-mig.txt
+#tls
+ssl/
+secrets/

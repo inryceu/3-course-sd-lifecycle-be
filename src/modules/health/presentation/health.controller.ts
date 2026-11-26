@@ -1,10 +1,12 @@
 import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../../common/decorators/public.decorator';
 import { HealthService } from '../application/health.service';
-import { HealthStatus } from '../domain/health-status';
+import { HealthStatus, LivenessStatus } from '../domain/health-status';
 
 @ApiTags('health')
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   constructor(private readonly health: HealthService) {}
@@ -15,7 +17,28 @@ export class HealthController {
   @ApiResponse({ status: 200, description: 'Service and database are up' })
   @ApiResponse({ status: 503, description: 'Database is not reachable' })
   async check(): Promise<HealthStatus> {
-    const status = await this.health.check();
+    const status = await this.health.ready();
+    if (status.status !== 'ok') {
+      throw new HttpException(status, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    return status;
+  }
+
+  @Public()
+  @Get('alive')
+  @ApiOperation({ summary: 'Liveness probe (process only, no DB check)' })
+  @ApiResponse({ status: 200, description: 'Service is alive' })
+  alive(): LivenessStatus {
+    return this.health.alive();
+  }
+
+  @Public()
+  @Get('ready')
+  @ApiOperation({ summary: 'Readiness probe (database reachable)' })
+  @ApiResponse({ status: 200, description: 'Service and database are up' })
+  @ApiResponse({ status: 503, description: 'Database is not reachable' })
+  async ready(): Promise<HealthStatus> {
+    const status = await this.health.ready();
     if (status.status !== 'ok') {
       throw new HttpException(status, HttpStatus.SERVICE_UNAVAILABLE);
     }

@@ -21,6 +21,20 @@ const accessTokenLifetime = Joi.string()
 
 const isProduction = Joi.valid('production');
 
+const placeholderPatterns = ['change-me', 'default', 'example', 'your-', 'placeholder'];
+
+const noPlaceholderSecret = Joi.string()
+  .min(32)
+  .custom((value: string, helpers) => {
+    const lower = value.toLowerCase();
+    if (placeholderPatterns.some((pattern) => lower.includes(pattern))) {
+      return helpers.error('any.invalid', {
+        error: new Error('JWT_SECRET must not look like a placeholder value in production'),
+      });
+    }
+    return value;
+  });
+
 /**
  * Validation schema for environment variables.
  * The application refuses to start when a required variable is missing or invalid.
@@ -31,7 +45,16 @@ export const validationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'production', 'test').required(),
   PORT: Joi.number().port().min(1).default(3000),
   API_PREFIX: Joi.string().default('api/v1'),
-  FRONTEND_URL: Joi.string().uri().required(),
+  FRONTEND_URL: Joi.string()
+    .uri()
+    .required()
+    .when('NODE_ENV', { is: isProduction, then: Joi.string().uri({ scheme: ['https'] }) }),
+  // Number of reverse proxies in front of the app (nginx = 1); makes req.ip the real client.
+  TRUST_PROXY: Joi.number().integer().min(0).default(0),
+  // Rate limits per client (T-36): global per minute, register/login per 5 minutes.
+  RATE_LIMIT_PER_MINUTE: Joi.number().integer().min(1).default(100),
+  RATE_LIMIT_REGISTER: Joi.number().integer().min(1).default(5),
+  RATE_LIMIT_LOGIN: Joi.number().integer().min(1).default(10),
 
   // Database
   DATABASE_HOST: Joi.string().hostname().required(),
@@ -43,7 +66,14 @@ export const validationSchema = Joi.object({
   DATABASE_POOL_MAX: Joi.number().integer().min(1).default(10),
 
   // Authentication
-  JWT_SECRET: Joi.string().min(32).required(),
+  JWT_SECRET: Joi.string()
+    .min(32)
+    .required()
+    .when('NODE_ENV', {
+      is: isProduction,
+      then: noPlaceholderSecret,
+      otherwise: Joi.string().min(32).required(),
+    }),
   JWT_EXPIRES_IN: accessTokenLifetime,
   BCRYPT_ROUNDS: Joi.number().integer().min(10).max(15).default(10),
 
@@ -81,6 +111,10 @@ export const validationSchema = Joi.object({
 
   // Deadline reminders: seconds between scheduler runs, 0 turns the scheduler off
   REMINDER_INTERVAL_SECONDS: Joi.number().integer().min(0).default(60),
+
+  // Realtime heartbeat in milliseconds (Socket.IO defaults)
+  REALTIME_PING_INTERVAL_MS: Joi.number().integer().positive().default(25000),
+  REALTIME_PING_TIMEOUT_MS: Joi.number().integer().positive().default(20000),
 }).required();
 
 /** Converts a Joi validation error to one readable message listing every problem. */
