@@ -108,6 +108,30 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Backup (Daily pg_dump at 3 am Europe/Kyiv, 7-day retention)
+  # ---------------------------------------------------------------------------
+  backup:
+    image: postgres:16-alpine
+    container_name: boardsync-full-backup
+    environment:
+      - PGPASSWORD=${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env.full}
+      - TZ=Europe/Kyiv
+    command: >
+      sh -c "
+        apk add --no-cache tzdata cron &&
+        echo '0 3 * * * PGPASSWORD=\$$PGPASSWORD pg_dump -h postgres -U boardsync boardsync | gzip > /backups/boardsync-boardsync-\$(date +\\%Y-\\%m-\\%d_\\%H-\\%M).sql.gz && find /backups -name \"*.sql.gz\" -mtime +7 -delete' | crontab - &&
+        crond -f -l 8
+      "
+    volumes:
+      - boardsync-full-backups:/backups
+    networks:
+      - boardsync_full
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 networks:
   boardsync_full:
     name: boardsync-full-network
@@ -115,3 +139,5 @@ networks:
 volumes:
   postgres_data:
     name: boardsync-postgres-full-data
+  boardsync-full-backups:
+    name: boardsync-full-backups
