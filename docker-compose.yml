@@ -83,6 +83,30 @@ services:
       - postgres
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Backup (Daily pg_dump at 3 am Europe/Kyiv, 7-day retention)
+  # ---------------------------------------------------------------------------
+  backup:
+    image: postgres:16-alpine
+    container_name: boardsync-backup-dev
+    environment:
+      - PGPASSWORD=postgres
+      - TZ=Europe/Kyiv
+    command: >
+      sh -c "
+        apk add --no-cache tzdata cron &&
+        echo '0 3 * * * pg_dump -h postgres -U postgres boardsync_dev | gzip > /backups/boardsync-boardsync_dev-\$(date +\\%Y-\\%m-\\%d_\\%H-\\%M).sql.gz && find /backups -name \"*.sql.gz\" -mtime +7 -delete' | crontab - &&
+        crond -f -l 8
+      "
+    volumes:
+      - boardsync_postgres_dev_backups:/backups
+    networks:
+      - boardsync_dev_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 # -----------------------------------------------------------------------------
 # Networks - Isolated from production
 # -----------------------------------------------------------------------------
@@ -97,5 +121,7 @@ networks:
 volumes:
   boardsync_postgres_dev_data:
     name: boardsync-postgres-dev-data
+  boardsync_postgres_dev_backups:
+    name: boardsync-postgres-dev-backups
   boardsync_pgadmin_dev_data:
     name: boardsync-pgadmin-dev-data

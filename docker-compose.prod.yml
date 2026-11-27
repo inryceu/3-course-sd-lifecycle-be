@@ -121,6 +121,32 @@ services:
           cpus: '0.25'
           memory: 64M
 
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Backup (Daily pg_dump at 3 am Europe/Kyiv, 7-day retention)
+  # ---------------------------------------------------------------------------
+  backup:
+    image: postgres:16-alpine
+    container_name: boardsync-backup-prod
+    environment:
+      - PGPASSWORD_FILE=/run/secrets/db_password
+      - TZ=Europe/Kyiv
+    command: >
+      sh -c "
+        apk add --no-cache tzdata cron &&
+        echo '0 3 * * * pg_dump -h postgres -U boardsync boardsync_prod | gzip > /backups/boardsync-boardsync_prod-\$(date +\\%Y-\\%m-\\%d_\\%H-\\%M).sql.gz && find /backups -name \"*.sql.gz\" -mtime +7 -delete' | crontab - &&
+        crond -f -l 8
+      "
+    secrets:
+      - db_password
+    volumes:
+      - boardsync_postgres_prod_backups:/backups
+    networks:
+      - boardsync_prod_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
 # -----------------------------------------------------------------------------
 # Networks - Completely isolated from development
 # -----------------------------------------------------------------------------
@@ -135,6 +161,8 @@ networks:
 volumes:
   boardsync_postgres_prod_data:
     name: boardsync-postgres-prod-data
+  boardsync_postgres_prod_backups:
+    name: boardsync-postgres-prod-backups
 
 # -----------------------------------------------------------------------------
 # Secrets - Production secrets managed via Docker secrets
