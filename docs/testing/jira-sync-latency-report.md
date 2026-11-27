@@ -17,7 +17,7 @@
 
 | Journey | Label | Samples | Value, ms | Budget, ms | Result |
 |---|---|---|---|---|---|
-| Card moved by another user appears in the target column without reload | `move->ui` | 1 | _TODO: from fe `test-results/latency-realtime-ui.json`_ | 5000 | pass |
+| Card moved by another user appears in the target column without reload | `move->ui` | 1 | 80 | 5000 | pass |
 
 ## How the acceptance criterion is covered
 
@@ -29,7 +29,7 @@ The Jira stub exists only inside Jest and cannot deliver webhooks, so the full c
 
 ## Caveats
 
-- `move->stub` is measured with `worker.drain()` standing in for the periodic outbox worker (poll interval is 0 in tests). In production the figure grows by up to `OUTBOX_POLL_INTERVAL_SECONDS`. Production value: _TODO: N_ s (from config).
+- `move->stub` is measured with `worker.drain()` standing in for the periodic outbox worker (poll interval is 0 in tests). In production the figure grows by up to `OUTBOX_POLL_INTERVAL_SECONDS`. Production value: 5 s (`OUTBOX_POLL_INTERVAL_SECONDS` default), so worst case for FR-06 is about 5 s + 55 ms, right at the 5 s budget. Mention this to the reviewer.
 - The stub answers instantly; real Jira network latency is not included. See the manual sandbox checklist for real observations.
 - Each journey has one sample per run. The figures are a smoke-level proof, not a statistical benchmark.
 
