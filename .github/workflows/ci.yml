@@ -157,6 +157,15 @@ jobs:
       - name: Run integration tests (real PostgreSQL)
         run: pnpm test:e2e
 
+      - name: Upload Jira sync latency results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: latency-jira-sync
+          path: test-results/latency-jira-sync.json
+          retention-days: 14
+          if-no-files-found: warn
+
   build:
     name: Build
     runs-on: ubuntu-latest
