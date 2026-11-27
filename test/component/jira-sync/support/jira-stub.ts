@@ -7,6 +7,7 @@ export interface RecordedCall {
   readonly path: string;
   readonly query: Record<string, string>;
   readonly body: unknown;
+  responseBody: unknown;
   readonly headers: IncomingMessage['headers'];
   readonly receivedAt: number;
 }
@@ -239,6 +240,7 @@ export class JiraStub {
       path,
       query,
       body,
+      responseBody: null,
       headers: req.headers,
       receivedAt: Date.now(),
     };
@@ -282,6 +284,9 @@ export class JiraStub {
     if (this.mode === 'status') {
       status = this.statusCode;
     }
+
+    // Record the response body in the call
+    call.responseBody = responseBody;
 
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(responseBody));
@@ -438,7 +443,8 @@ export class JiraStub {
     const nextPageToken = searchParams.get('nextPageToken');
     const maxResults = parseInt(searchParams.get('maxResults') ?? '50', 10);
 
-    let allIssues = Array.from(this.state.issues.values());
+    // Deduplicate by object reference because seedIssue stores each issue under both key and id
+    let allIssues = Array.from(new Set(this.state.issues.values()));
     if (jql.includes('project =')) {
       const projectKeyMatch = jql.match(/project\s*=\s*["']?([^"']+)["']?/);
       if (projectKeyMatch) {
