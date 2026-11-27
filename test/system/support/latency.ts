@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
@@ -45,10 +45,24 @@ export function summarizeLatencies(samples: readonly number[]): LatencyStats {
   return { count: samples.length, min, avg: total / samples.length, max };
 }
 
+export function mergeStats(previous: LatencyStats | undefined, current: LatencyStats): LatencyStats {
+  if (previous === undefined) {
+    return current;
+  }
+  const count = previous.count + current.count;
+  return {
+    count,
+    min: Math.min(previous.min, current.min),
+    max: Math.max(previous.max, current.max),
+    avg: (previous.avg * previous.count + current.avg * current.count) / count,
+  };
+}
+
 export class LatencyRecorder {
   private readonly samples = new Map<string, number[]>();
   private readonly resultsPath: string;
   private readonly now: () => number;
+  private baseline: Record<string, LatencyStats> | undefined;
 
   constructor(options: LatencyRecorderOptions = {}) {
     this.resultsPath = options.resultsPath ?? DEFAULT_LATENCY_RESULTS_PATH;
@@ -112,13 +126,33 @@ export class LatencyRecorder {
     return stats;
   }
 
+  /** Writes this run's samples merged with what earlier spec files already wrote. */
   flush(): void {
     mkdirSync(dirname(this.resultsPath), { recursive: true });
-    writeFileSync(this.resultsPath, `${JSON.stringify(this.report(), null, 2)}\n`, 'utf8');
+    this.baseline ??= this.readExisting();
+    const baseline = this.baseline;
+    const labels: Record<string, LatencyStats> = { ...baseline };
+    for (const [label, samples] of this.samples) {
+      labels[label] = mergeStats(baseline[label], summarizeLatencies(samples));
+    }
+    const report: LatencyReport = { generatedAt: new Date().toISOString(), labels };
+    writeFileSync(this.resultsPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   }
 
   reset(): void {
     this.samples.clear();
+  }
+
+  private readExisting(): Record<string, LatencyStats> {
+    if (!existsSync(this.resultsPath)) {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(readFileSync(this.resultsPath, 'utf8')) as Partial<LatencyReport>;
+      return parsed.labels ?? {};
+    } catch {
+      return {};
+    }
   }
 }
 
