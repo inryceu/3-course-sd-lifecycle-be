@@ -45,7 +45,10 @@ export function summarizeLatencies(samples: readonly number[]): LatencyStats {
   return { count: samples.length, min, avg: total / samples.length, max };
 }
 
-export function mergeStats(previous: LatencyStats | undefined, current: LatencyStats): LatencyStats {
+export function mergeStats(
+  previous: LatencyStats | undefined,
+  current: LatencyStats,
+): LatencyStats {
   if (previous === undefined) {
     return current;
   }
